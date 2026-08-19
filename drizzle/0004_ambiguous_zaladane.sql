@@ -1,0 +1,1 @@
+ALTER TABLE `toothConditions` ADD `mode` enum('status','plan') DEFAULT 'status' NOT NULL;
