@@ -100,3 +100,10 @@
 .odontogram-art[data-plan="true"] {
   stroke-width: 1.1;
 }
+
+.odontogram-art svg path,
+.odontogram-art path,
+.odontogram-art g {
+  stroke: oklch(0.35 0.01 240) !important; /* Dark slate gray line */
+  stroke-width: 1.2px !important;
+}

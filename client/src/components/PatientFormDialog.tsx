@@ -67,6 +67,16 @@ export type PatientFormData = {
   dentalNotes: string;
 };
 
+const TAB_ORDER = ["personal", "lifestyle", "medical", "emergency"] as const;
+type PatientTab = (typeof TAB_ORDER)[number];
+
+const TAB_LABELS: Record<PatientTab, string> = {
+  personal: "Personal & Contact",
+  lifestyle: "Lifestyle & Smoker",
+  medical: "Medical Alerts",
+  emergency: "Emergency & Notes",
+};
+
 const defaultFormData: PatientFormData = {
   firstName: "",
   lastName: "",
@@ -115,7 +125,7 @@ export function PatientFormDialog({
 }: PatientFormDialogProps) {
   const utils = trpc.useUtils();
   const isEdit = !!patient;
-  const [activeTab, setActiveTab] = useState<"personal" | "lifestyle" | "medical" | "emergency">("personal");
+  const [activeTab, setActiveTab] = useState<PatientTab>("personal");
   const [form, setForm] = useState<PatientFormData>(defaultFormData);
 
   // Populate form data when dialog opens or patient changes
@@ -198,10 +208,25 @@ export function PatientFormDialog({
 
   const isSaving = createMutation.isPending || updateMutation.isPending;
 
+  const activeStepIndex = TAB_ORDER.indexOf(activeTab);
+  const isFirstStep = activeStepIndex === 0;
+  const isLastStep = activeStepIndex === TAB_ORDER.length - 1;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // The first step is the only step with required fields. Keep the user on
+    // that step when they try to continue without the minimum patient identity.
     if (!form.firstName.trim() || !form.lastName.trim()) {
+      setActiveTab("personal");
       toast.error("Please enter first and last name");
+      return;
+    }
+
+    // Continue through the wizard one tab at a time. Only the last step
+    // reaches the mutation payload below.
+    if (!isLastStep) {
+      setActiveTab(TAB_ORDER[activeStepIndex + 1]);
       return;
     }
 
@@ -694,33 +719,34 @@ export function PatientFormDialog({
 
           <DialogFooter className="px-6 py-3 border-t bg-card flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              {activeTab === "personal" && "Step 1 of 4: Personal Info"}
-              {activeTab === "lifestyle" && "Step 2 of 4: Smoking & Habits"}
-              {activeTab === "medical" && "Step 3 of 4: Medical Alerts"}
-              {activeTab === "emergency" && "Step 4 of 4: Emergency & Notes"}
+              Step {activeStepIndex + 1} of {TAB_ORDER.length}: {TAB_LABELS[activeTab]}
             </div>
             <div className="flex items-center gap-2">
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => onOpenChange(false)}
+                onClick={() => {
+                  if (isFirstStep) {
+                    onOpenChange(false);
+                  } else {
+                    setActiveTab(TAB_ORDER[activeStepIndex - 1]);
+                  }
+                }}
                 disabled={isSaving}
               >
-                Cancel
+                {isFirstStep ? "Cancel" : "Back"}
               </Button>
               <Button
                 type="submit"
-                disabled={isSaving || !form.firstName.trim() || !form.lastName.trim()}
+                disabled={isSaving || (isFirstStep && (!form.firstName.trim() || !form.lastName.trim()))}
                 className="gap-1.5"
               >
                 {isSaving ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
-                ) : isEdit ? (
-                  <Pencil className="h-4 w-4" />
-                ) : (
-                  <UserPlus className="h-4 w-4" />
-                )}
-                {isEdit ? "Save Changes" : "Register Patient"}
+                ) : isLastStep ? (
+                  isEdit ? <Pencil className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />
+                ) : null}
+                {isLastStep ? (isEdit ? "Save Changes" : "Register Patient") : `Next: ${TAB_LABELS[TAB_ORDER[activeStepIndex + 1]]}`}
               </Button>
             </div>
           </DialogFooter>
