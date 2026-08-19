@@ -57,6 +57,35 @@ export const patients = mysqlTable("patients", {
   allergies: text("allergies"),
   medicalNotes: text("medicalNotes"),
   dentalNotes: text("dentalNotes"),
+
+  // Clinical lifestyle & smoking status
+  smokingStatus: mysqlEnum("smokingStatus", [
+    "never",
+    "former",
+    "current_light",
+    "current_heavy",
+    "vaping",
+    "chewing_tobacco",
+  ]).default("never"),
+  smokingDetails: text("smokingDetails"),
+  alcoholUse: mysqlEnum("alcoholUse", ["none", "occasional", "moderate", "heavy"]).default("none"),
+
+  // Dental-relevant medical alerts & systemic conditions
+  diabetes: varchar("diabetes", { length: 64 }),
+  bleedingDisorder: varchar("bleedingDisorder", { length: 128 }),
+  cardiovascular: text("cardiovascular"),
+  isPregnant: boolean("isPregnant").default(false),
+  currentMedications: text("currentMedications"),
+  bruxism: boolean("bruxism").default(false),
+  dentalAnxiety: mysqlEnum("dentalAnxiety", ["none", "mild", "moderate", "severe"]).default("none"),
+  chiefComplaint: text("chiefComplaint"),
+
+  // Social & Emergency contact
+  occupation: varchar("occupation", { length: 128 }),
+  emergencyContactName: varchar("emergencyContactName", { length: 128 }),
+  emergencyContactPhone: varchar("emergencyContactPhone", { length: 32 }),
+  emergencyContactRelation: varchar("emergencyContactRelation", { length: 64 }),
+
   status: mysqlEnum("status", ["active", "inactive"]).default("active").notNull(),
   registeredAt: timestamp("registeredAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

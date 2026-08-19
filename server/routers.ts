@@ -36,13 +36,35 @@ const patientInput = z.object({
   lastName: z.string().min(1),
   dateOfBirth: z.string().nullable().optional(),
   gender: z.enum(["male", "female", "other"]).nullable().optional(),
-  phone: z.string().optional(),
+  phone: z.string().nullable().optional(),
   email: z.string().nullable().optional(),
   address: z.string().nullable().optional(),
   bloodType: z.string().max(4).nullable().optional(),
   allergies: z.string().nullable().optional(),
   medicalNotes: z.string().nullable().optional(),
   dentalNotes: z.string().nullable().optional(),
+
+  // Clinical lifestyle & smoking status
+  smokingStatus: z.enum(["never", "former", "current_light", "current_heavy", "vaping", "chewing_tobacco"]).nullable().optional(),
+  smokingDetails: z.string().nullable().optional(),
+  alcoholUse: z.enum(["none", "occasional", "moderate", "heavy"]).nullable().optional(),
+
+  // Dental-relevant medical alerts & systemic conditions
+  diabetes: z.string().nullable().optional(),
+  bleedingDisorder: z.string().nullable().optional(),
+  cardiovascular: z.string().nullable().optional(),
+  isPregnant: z.boolean().nullable().optional(),
+  currentMedications: z.string().nullable().optional(),
+  bruxism: z.boolean().nullable().optional(),
+  dentalAnxiety: z.enum(["none", "mild", "moderate", "severe"]).nullable().optional(),
+  chiefComplaint: z.string().nullable().optional(),
+
+  // Social & Emergency contact
+  occupation: z.string().nullable().optional(),
+  emergencyContactName: z.string().nullable().optional(),
+  emergencyContactPhone: z.string().nullable().optional(),
+  emergencyContactRelation: z.string().nullable().optional(),
+
   status: z.enum(["active", "inactive"]).optional(),
 });
 
@@ -121,10 +143,11 @@ export const appRouter = router({
       .input(z.object({ id: z.number(), data: patientInput.partial() }))
       .mutation(async ({ ctx, input }) => {
         requireRoles(ctx, ["admin", "dentist", "receptionist"]);
-        await db.updatePatient(input.id, {
-          ...input.data,
-          dateOfBirth: input.data.dateOfBirth ? new Date(input.data.dateOfBirth) : undefined,
-        });
+        const updateData: Record<string, unknown> = { ...input.data };
+        if (input.data.dateOfBirth !== undefined) {
+          updateData.dateOfBirth = input.data.dateOfBirth ? new Date(input.data.dateOfBirth) : null;
+        }
+        await db.updatePatient(input.id, updateData);
         return { success: true } as const;
       }),
   }),

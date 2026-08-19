@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { ToothGlyph } from "./ToothGlyph";
+import { formatToothNumber, NotationSystem } from "@/lib/dentalNotation";
 
 /**
  * Adult dentition chart (FDI notation, 32 teeth) laid out like the reference
@@ -83,6 +84,7 @@ export function ToothChart({
   showBone = true,
   showPulp = true,
   showWisdom = true,
+  notation = "fdi",
 }: {
   conditions: ToothMap;
   /** Planned-treatment layer: toothNumber -> condition (rendered dashed). */
@@ -95,6 +97,7 @@ export function ToothChart({
   showBone?: boolean;
   showPulp?: boolean;
   showWisdom?: boolean;
+  notation?: NotationSystem;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [autoWidth, setAutoWidth] = useState<number | null>(null);
@@ -119,7 +122,7 @@ export function ToothChart({
   function renderArch(arch: number[], isUpper: boolean) {
     return (
       <div key={isUpper ? "upper" : "lower"} className="relative" style={{ width }}>
-        {/* FDI number row */}
+        {/* FDI / Universal / Palmer number row */}
         <div
           className="grid justify-items-center"
           style={{
@@ -132,12 +135,12 @@ export function ToothChart({
             <span
               key={n}
               className={cn(
-                "text-[11px] font-bold leading-none",
-                selected === String(n) ? "text-primary" : "text-slate-500",
+                "text-[11px] font-bold leading-none select-none",
+                selected === String(n) ? "text-primary font-black" : "text-slate-500",
               )}
               style={{ width: cellSize }}
             >
-              {n}
+              {formatToothNumber(n, notation)}
             </span>
           ))}
         </div>

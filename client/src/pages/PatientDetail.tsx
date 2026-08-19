@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { cn } from "@/lib/utils";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,22 +27,31 @@ import {
   StatusBadge,
 } from "@/components/dental";
 import {
+  AlertTriangle,
   ArrowLeft,
   CalendarPlus,
   CheckCircle2,
+  Cigarette,
   ClipboardPlus,
   FileText,
+  HeartPulse,
   Loader2,
   MinusCircle,
   Pencil,
+  Phone,
   Plus,
   ScrollText,
+  ShieldAlert,
   Sparkles,
   Stethoscope,
+  User,
 } from "lucide-react";
 import { toast } from "sonner";
 import { TreatmentPlanCard } from "@/components/TreatmentPlanCard";
+import { AdvancedOdontogram } from "@/components/AdvancedOdontogram";
 import { CDTCodePicker } from "@/components/CDTCodePicker";
+import { PatientFormDialog } from "@/components/PatientFormDialog";
+import type { Patient } from "@shared/types";
 import { CDTCode, getCDTCode } from "@shared/cdtCodes";
 
 const TOOTH_CONDITIONS = [
@@ -53,6 +63,7 @@ export default function PatientDetail({ id }: { id: number }) {
   const utils = trpc.useUtils();
   const role = useCurrentRole();
   const [activeTab, setActiveTab] = useState("overview");
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedTooth, setSelectedTooth] = useState<string | null>(null);
   const [toothDialogOpen, setToothDialogOpen] = useState(false);
   const [toothCondition, setToothCondition] = useState("");
@@ -265,6 +276,37 @@ export default function PatientDetail({ id }: { id: number }) {
     {} as SurfaceMap,
   );
 
+  const formatSmokerBadge = (status: string | null | undefined, details?: string | null) => {
+    if (!status || status === "never") {
+      return (
+        <Badge variant="outline" className="text-xs font-semibold px-2 py-0.5 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10">
+          Non-Smoker
+        </Badge>
+      );
+    }
+    if (status === "former") {
+      return (
+        <Badge variant="outline" className="text-xs font-semibold px-2 py-0.5 border-amber-500/40 text-amber-700 dark:text-amber-300 bg-amber-500/10" title={details || undefined}>
+          Former Smoker {details ? `(${details})` : ""}
+        </Badge>
+      );
+    }
+    if (status === "vaping") {
+      return (
+        <Badge variant="outline" className="text-xs font-semibold px-2 py-0.5 border-purple-500/40 text-purple-700 dark:text-purple-300 bg-purple-500/10" title={details || undefined}>
+          Vaping / E-Cigarettes {details ? `(${details})` : ""}
+        </Badge>
+      );
+    }
+    const label = status === "current_heavy" ? "Heavy Smoker (10+/day)" : status === "chewing_tobacco" ? "Chewing Tobacco" : "Current Smoker";
+    return (
+      <Badge variant="destructive" className="text-xs font-semibold px-2 py-0.5 gap-1.5 bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30" title={details || undefined}>
+        <Cigarette className="h-3 w-3" />
+        {label} {details ? `— ${details}` : ""}
+      </Badge>
+    );
+  };
+
   return (
     <DashboardLayout>
       <div className="mb-5">
@@ -273,22 +315,37 @@ export default function PatientDetail({ id }: { id: number }) {
         </Link>
       </div>
 
-      <div className="rounded-2xl bg-card border border-border/60 shadow-[0_2px_12px_-4px_rgba(13,60,67,0.08)] p-5 mb-6">
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="h-14 w-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center text-lg font-bold">
-            {(p.firstName[0] + p.lastName[0]).toUpperCase()}
+      <div className="rounded-2xl bg-card border border-border/60 shadow-[0_2px_12px_-4px_rgba(13,60,67,0.08)] p-5 mb-6 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-4 min-w-0">
+            <div className="h-14 w-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center text-lg font-bold shrink-0">
+              {(p.firstName[0] + p.lastName[0]).toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h1 className="text-lg font-bold tracking-tight text-foreground">
+                  {p.firstName} {p.lastName}
+                </h1>
+                <StatusBadge status={p.status} />
+              </div>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                {p.gender ? `${p.gender.charAt(0).toUpperCase() + p.gender.slice(1)}, ` : ""}
+                DOB {formatDate(p.dateOfBirth)} · ID #{p.id}
+                {p.occupation ? ` · ${p.occupation}` : ""}
+              </p>
+            </div>
           </div>
-          <div className="flex-1 min-w-56">
-            <h1 className="text-lg font-bold tracking-tight">
-              {p.firstName} {p.lastName}
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              {p.gender ? `${p.gender.charAt(0).toUpperCase() + p.gender.slice(1)}, ` : ""}
-              DOB {formatDate(p.dateOfBirth)} · ID #{p.id}
-            </p>
-          </div>
-          <StatusBadge status={p.status} />
-          <div className="flex gap-2">
+
+          <div className="flex gap-2 flex-wrap items-center">
+            {role === "admin" || role === "dentist" || role === "receptionist" ? (
+              <Button
+                variant="default"
+                className="gap-1.5 shadow-sm"
+                onClick={() => setEditDialogOpen(true)}
+              >
+                <Pencil className="h-4 w-4" /> Edit Patient
+              </Button>
+            ) : null}
             {role === "admin" || role === "receptionist" ? (
               <Button variant="outline" className="gap-1.5" onClick={() => window.location.href = "/appointments"}>
                 <CalendarPlus className="h-4 w-4" /> Appointment
@@ -301,14 +358,72 @@ export default function PatientDetail({ id }: { id: number }) {
             ) : null}
           </div>
         </div>
-        <div className="grid gap-x-8 gap-y-2 mt-5 text-sm sm:grid-cols-2 lg:grid-cols-4">
+
+        {/* Clinical Risk & Lifestyle Alert Bar */}
+        <div className="pt-3 border-t border-border/50 flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground font-semibold flex items-center gap-1 mr-1">
+            <HeartPulse className="h-3.5 w-3.5 text-primary" /> Clinical Flags:
+          </span>
+          {formatSmokerBadge(p.smokingStatus, p.smokingDetails)}
+
+          {p.allergies ? (
+            <Badge variant="destructive" className="text-xs font-semibold px-2 py-0.5 gap-1 bg-destructive/15 text-destructive border border-destructive/30">
+              <AlertTriangle className="h-3 w-3" />
+              Allergies: {p.allergies}
+            </Badge>
+          ) : null}
+
+          {p.diabetes ? (
+            <Badge variant="outline" className="text-xs font-medium px-2 py-0.5 border-amber-500/40 text-amber-800 dark:text-amber-300 bg-amber-500/10">
+              Diabetes: {p.diabetes}
+            </Badge>
+          ) : null}
+
+          {p.bleedingDisorder ? (
+            <Badge variant="destructive" className="text-xs font-semibold px-2 py-0.5 border-rose-500/40 text-rose-700 dark:text-rose-300 bg-rose-500/10">
+              Bleeding/Anticoagulant: {p.bleedingDisorder}
+            </Badge>
+          ) : null}
+
+          {p.cardiovascular ? (
+            <Badge variant="outline" className="text-xs font-medium px-2 py-0.5 border-blue-500/40 text-blue-800 dark:text-blue-300 bg-blue-500/10">
+              Cardio: {p.cardiovascular}
+            </Badge>
+          ) : null}
+
+          {p.bruxism ? (
+            <Badge variant="outline" className="text-xs font-medium px-2 py-0.5 border-indigo-500/40 text-indigo-800 dark:text-indigo-300 bg-indigo-500/10">
+              Bruxism (Grinding)
+            </Badge>
+          ) : null}
+
+          {p.dentalAnxiety && p.dentalAnxiety !== "none" ? (
+            <Badge variant="outline" className="text-xs font-medium px-2 py-0.5 border-purple-500/40 text-purple-800 dark:text-purple-300 bg-purple-500/10">
+              Anxiety: {p.dentalAnxiety}
+            </Badge>
+          ) : null}
+
+          {p.isPregnant ? (
+            <Badge variant="outline" className="text-xs font-semibold px-2 py-0.5 border-pink-500/40 text-pink-800 dark:text-pink-300 bg-pink-500/10">
+              Pregnant / Nursing
+            </Badge>
+          ) : null}
+        </div>
+
+        {/* Contact and Emergency details */}
+        <div className="grid gap-x-8 gap-y-2 pt-2 border-t border-border/50 text-sm sm:grid-cols-2 lg:grid-cols-4">
           <Info label="Phone" value={p.phone} />
           <Info label="Email" value={p.email} />
-          <Info label="Blood type" value={p.bloodType} />
-          <Info label="Allergies" value={p.allergies} />
-          <Info label="Registered" value={formatDate(p.registeredAt)} className="sm:col-span-2 lg:col-span-4" />
-          {p.medicalNotes ? <Info label="Medical history" value={p.medicalNotes} className="sm:col-span-2 lg:col-span-4" /> : null}
-          {p.dentalNotes ? <Info label="Dental history" value={p.dentalNotes} className="sm:col-span-2 lg:col-span-4" /> : null}
+          <Info label="Address" value={p.address} />
+          <Info label="Blood Type" value={p.bloodType} />
+          {p.emergencyContactName ? (
+            <Info
+              label="Emergency Contact"
+              value={`${p.emergencyContactName} (${p.emergencyContactRelation || "Contact"}) · ${p.emergencyContactPhone || "No phone"}`}
+              className="sm:col-span-2 lg:col-span-2"
+            />
+          ) : null}
+          <Info label="Registered" value={formatDate(p.registeredAt)} className={p.emergencyContactName ? "sm:col-span-2" : "sm:col-span-2 lg:col-span-4"} />
         </div>
       </div>
 
@@ -417,6 +532,90 @@ export default function PatientDetail({ id }: { id: number }) {
           </SectionCard>
 
           <div className="grid gap-6">
+            {/* Medical & Dental Risk Assessment Card */}
+            <SectionCard
+              title="Medical Alerts & Clinical Risk Profile"
+              actions={
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                  onClick={() => setEditDialogOpen(true)}
+                >
+                  <Pencil className="h-3.5 w-3.5" /> Edit
+                </Button>
+              }
+            >
+              <div className="space-y-3.5 text-xs">
+                {p.chiefComplaint && (
+                  <div className="p-2.5 rounded-lg bg-primary/5 border border-primary/20">
+                    <span className="font-bold text-primary flex items-center gap-1 mb-0.5">
+                      <Sparkles className="h-3.5 w-3.5" /> Chief Complaint / Reason for Visit:
+                    </span>
+                    <p className="text-foreground">{p.chiefComplaint}</p>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <span className="font-semibold text-muted-foreground">Tobacco & Smoking:</span>
+                    <div>{formatSmokerBadge(p.smokingStatus, p.smokingDetails)}</div>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="font-semibold text-muted-foreground">Alcohol Consumption:</span>
+                    <p className="font-medium text-foreground capitalize">{p.alcoholUse || "None"}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border/50">
+                  <div className="space-y-1">
+                    <span className="font-semibold text-muted-foreground">Known Allergies:</span>
+                    <p className={p.allergies ? "font-bold text-destructive" : "font-medium text-foreground"}>
+                      {p.allergies || "None reported (NKDA)"}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="font-semibold text-muted-foreground">Diabetes Status:</span>
+                    <p className="font-medium text-foreground">{p.diabetes || "None"}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border/50">
+                  <div className="space-y-1">
+                    <span className="font-semibold text-muted-foreground">Bleeding / Anticoagulants:</span>
+                    <p className="font-medium text-foreground">{p.bleedingDisorder || "None"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="font-semibold text-muted-foreground">Cardiovascular Health:</span>
+                    <p className="font-medium text-foreground">{p.cardiovascular || "Normal"}</p>
+                  </div>
+                </div>
+
+                {(p.currentMedications || p.bruxism || (p.dentalAnxiety && p.dentalAnxiety !== "none")) && (
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border/50">
+                    {p.currentMedications && (
+                      <div className="space-y-1 col-span-2">
+                        <span className="font-semibold text-muted-foreground">Current Medications:</span>
+                        <p className="font-medium text-foreground">{p.currentMedications}</p>
+                      </div>
+                    )}
+                    {p.bruxism && (
+                      <div className="space-y-1">
+                        <span className="font-semibold text-muted-foreground">Bruxism (Grinding):</span>
+                        <p className="font-medium text-foreground">Yes (Consider Nightguard)</p>
+                      </div>
+                    )}
+                    {p.dentalAnxiety && p.dentalAnxiety !== "none" && (
+                      <div className="space-y-1">
+                        <span className="font-semibold text-muted-foreground">Dental Anxiety Level:</span>
+                        <p className="font-medium text-foreground capitalize">{p.dentalAnxiety}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </SectionCard>
+
             <SectionCard
               title="Treatment plans"
               actions={
@@ -474,66 +673,55 @@ export default function PatientDetail({ id }: { id: number }) {
           </div>
         </TabsContent>
 
-        <TabsContent value="clinical">
-          <div className="grid gap-6 lg:grid-cols-2">
-            <SectionCard title="Dental chart — whole tooth">
-              <ToothChart conditions={condMap} size={56} gap={3} />
-              <p className="mt-3 text-xs text-muted-foreground text-center">
-                Click a tooth to record its whole-tooth condition.
-              </p>
-            </SectionCard>
-            <SectionCard
-              title="Periodontal status"
-              actions={
-                <span className="inline-flex items-center gap-1.5 text-xs font-medium" style={{ color: perioSummary(perioMap).color }}>
-                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: perioSummary(perioMap).color }} />
-                  {perioSummary(perioMap).label}
-                </span>
-              }
-            >
-              {isDentist ? (
-                <>
-                  <PerioChart
-                    perio={perioMap}
-                    selected={perioSelected}
-                    onSelect={n => {
-                      setPerioSelected(n);
-                      setPerioDialogOpen(true);
-                    }}
-                    showWisdom={showWisdom}
-                  />
-                  <p className="mt-3 text-xs text-muted-foreground text-center">
-                    Click a tooth to record the six-point probing depths (mm), recession, mobility, bleeding and plaque.
-                  </p>
-                </>
-              ) : (
-                <PerioChart perio={perioMap} showWisdom={showWisdom} />
-              )}
-            </SectionCard>
-            <SectionCard title="Surface chart — 5 surfaces per tooth">
-              <ToothSurfaceChart
-                surfaces={surfaceMap}
-                selectedTooth={selectedTooth}
-                activeSurface={activeSurface}
-                onSelect={(toothNumber, surface) => {
-                  setSelectedTooth(toothNumber);
-                  setActiveSurface(surface);
-                  setToothDialogOpen(true);
+        <TabsContent value="clinical" className="space-y-6">
+          <SectionCard
+            title="Odontogram & Periodontal Status"
+            actions={
+              <span
+                className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border"
+                style={{
+                  color: perioSummary(perioMap).color,
+                  borderColor: `${perioSummary(perioMap).color}40`,
+                  backgroundColor: `${perioSummary(perioMap).color}10`,
                 }}
-              />
-              <p className="mt-3 text-xs text-muted-foreground text-center">
-                Click a surface (mesial · distal · buccal · lingual · occlusal) to record decay or fillings per surface.
-              </p>
-              <div className="mt-3 flex flex-wrap gap-1.5 justify-center">
-                {[["decay", CONDITION_COLORS.decay], ["filling", CONDITION_COLORS.filling], ["missing", CONDITION_COLORS.missing]].map(([k, v]) => (
-                  <span key={k} className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: v }} />
-                    {k}
-                  </span>
-                ))}
-                <span className="text-[11px] text-muted-foreground">· white = healthy</span>
-              </div>
-            </SectionCard>
+              >
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ backgroundColor: perioSummary(perioMap).color }}
+                />
+                Perio: {perioSummary(perioMap).label}
+              </span>
+            }
+          >
+            <AdvancedOdontogram
+              conditions={statusMap}
+              planConditions={planMap}
+              surfaces={surfaceMap}
+              perio={perioMap}
+              selectedTooth={selectedTooth}
+              activeSurface={activeSurface}
+              onSelectTooth={t => setSelectedTooth(t)}
+              onSelectSurface={(t, s) => {
+                setSelectedTooth(t);
+                setActiveSurface(s);
+              }}
+              onOpenPerioDialog={t => {
+                setPerioSelected(t);
+                setPerioDialogOpen(true);
+              }}
+              onOpenToothDialog={t => {
+                setSelectedTooth(t);
+                setToothDialogOpen(true);
+              }}
+              onBulkSelect={teeth => {
+                setBulkGroup(teeth);
+                setToothDialogOpen(true);
+              }}
+              chartMode={chartMode}
+              onChartModeChange={setChartMode}
+              isDentist={isDentist}
+            />
+          </SectionCard>
             <SectionCard
               title="Treatment plans"
               actions={
@@ -588,7 +776,6 @@ export default function PatientDetail({ id }: { id: number }) {
                 </div>
               )}
             </SectionCard>
-          </div>
         </TabsContent>
 
         <TabsContent value="notes">
@@ -935,6 +1122,14 @@ export default function PatientDetail({ id }: { id: number }) {
         }}
         toothNumber={selectedTooth}
         surface={activeSurface}
+      />
+
+      {/* Edit Patient Dialog */}
+      <PatientFormDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        patient={p as Patient}
+        onSuccess={() => utils.patients.get.invalidate({ id })}
       />
     </DashboardLayout>
   );

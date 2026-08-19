@@ -36,6 +36,20 @@
       "when": 1787144155036,
       "tag": "0004_ambiguous_zaladane",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1787156751514,
+      "tag": "0005_purple_odin",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1787156775192,
+      "tag": "0006_quick_spyke",
+      "breakpoints": true
     }
   ]
 }

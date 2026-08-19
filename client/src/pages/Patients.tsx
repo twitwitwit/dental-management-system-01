@@ -2,9 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -13,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
 import { useCurrentRole } from "@/lib/roles";
 import { formatDate } from "@/lib/format";
@@ -22,45 +20,25 @@ import {
   PageHeader,
   StatusBadge,
 } from "@/components/dental";
-import { Loader2, Search, UserPlus, UserRound } from "lucide-react";
-import { toast } from "sonner";
-
-type PatientForm = {
-  firstName: string;
-  lastName: string;
-  dateOfBirth: string;
-  gender: "male" | "female" | "other" | "";
-  phone: string;
-  email: string;
-  address: string;
-  bloodType: string;
-  allergies: string;
-  medicalNotes: string;
-  dentalNotes: string;
-};
-
-const emptyForm: PatientForm = {
-  firstName: "",
-  lastName: "",
-  dateOfBirth: "",
-  gender: "",
-  phone: "",
-  email: "",
-  address: "",
-  bloodType: "",
-  allergies: "",
-  medicalNotes: "",
-  dentalNotes: "",
-};
+import {
+  AlertTriangle,
+  Cigarette,
+  HeartPulse,
+  Loader2,
+  Pencil,
+  Search,
+  UserPlus,
+} from "lucide-react";
+import { PatientFormDialog } from "@/components/PatientFormDialog";
+import type { Patient } from "@shared/types";
 
 export default function Patients() {
-  const utils = trpc.useUtils();
   const role = useCurrentRole();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [form, setForm] = useState<PatientForm>(emptyForm);
+  const [formDialogOpen, setFormDialogOpen] = useState(false);
+  const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 250);
@@ -75,17 +53,8 @@ export default function Patients() {
     { enabled: !!role },
   );
 
-  const create = trpc.patients.create.useMutation({
-    onSuccess: () => {
-      toast.success("Patient registered successfully");
-      setDialogOpen(false);
-      setForm(emptyForm);
-      utils.patients.list.invalidate();
-    },
-    onError: e => toast.error(e.message),
-  });
-
   const canAdd = role === "admin" || role === "receptionist";
+  const canEdit = role === "admin" || role === "dentist" || role === "receptionist";
 
   const genderLabel = (g: string | null | undefined) =>
     g ? g.charAt(0).toUpperCase() + g.slice(1) : "—";
@@ -95,6 +64,36 @@ export default function Patients() {
     [query.data],
   );
 
+  const formatSmokerBadge = (status: string | null | undefined) => {
+    if (!status || status === "never") {
+      return (
+        <span className="text-[11px] text-muted-foreground">
+          Non-smoker
+        </span>
+      );
+    }
+    if (status === "former") {
+      return (
+        <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-400 text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40">
+          Former
+        </Badge>
+      );
+    }
+    if (status === "vaping") {
+      return (
+        <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-purple-400 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40">
+          Vaping
+        </Badge>
+      );
+    }
+    return (
+      <Badge variant="destructive" className="text-[10px] px-1.5 py-0 gap-1 bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30">
+        <Cigarette className="h-2.5 w-2.5" />
+        Smoker
+      </Badge>
+    );
+  };
+
   return (
     <DashboardLayout>
       <PageHeader
@@ -102,137 +101,15 @@ export default function Patients() {
         description={`${patientCount} patient${patientCount === 1 ? "" : "s"} registered.`}
         actions={
           canAdd ? (
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="gap-1.5">
-                  <UserPlus className="h-4 w-4" /> New Patient
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>Register New Patient</DialogTitle>
-                </DialogHeader>
-                <form
-                  className="grid gap-3.5"
-                  onSubmit={e => {
-                    e.preventDefault();
-                    create.mutate({
-                      firstName: form.firstName.trim(),
-                      lastName: form.lastName.trim(),
-                      dateOfBirth: form.dateOfBirth || null,
-                      gender: form.gender || null,
-                      phone: form.phone || undefined,
-                      email: form.email || null,
-                      address: form.address || null,
-                      bloodType: form.bloodType || null,
-                      allergies: form.allergies || null,
-                      medicalNotes: form.medicalNotes || null,
-                      dentalNotes: form.dentalNotes || null,
-                    });
-                  }}
-                >
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="grid gap-1.5">
-                      <Label htmlFor="firstName">First name *</Label>
-                      <Input
-                        id="firstName"
-                        required
-                        value={form.firstName}
-                        onChange={e => setForm({ ...form, firstName: e.target.value })}
-                      />
-                    </div>
-                    <div className="grid gap-1.5">
-                      <Label htmlFor="lastName">Last name *</Label>
-                      <Input
-                        id="lastName"
-                        required
-                        value={form.lastName}
-                        onChange={e => setForm({ ...form, lastName: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="grid gap-1.5">
-                      <Label htmlFor="dob">Date of birth</Label>
-                      <Input
-                        id="dob"
-                        type="date"
-                        value={form.dateOfBirth}
-                        onChange={e => setForm({ ...form, dateOfBirth: e.target.value })}
-                      />
-                    </div>
-                    <div className="grid gap-1.5">
-                      <Label>Gender</Label>
-                      <Select
-                        value={form.gender}
-                        onValueChange={v => setForm({ ...form, gender: v as PatientForm["gender"] })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="male">Male</SelectItem>
-                          <SelectItem value="female">Female</SelectItem>
-                          <SelectItem value="other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="grid gap-1.5">
-                      <Label>Phone</Label>
-                      <Input
-                        value={form.phone}
-                        onChange={e => setForm({ ...form, phone: e.target.value })}
-                      />
-                    </div>
-                    <div className="grid gap-1.5">
-                      <Label>Email</Label>
-                      <Input
-                        type="email"
-                        value={form.email}
-                        onChange={e => setForm({ ...form, email: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                  <div className="grid gap-1.5">
-                    <Label>Address</Label>
-                    <Input
-                      value={form.address}
-                      onChange={e => setForm({ ...form, address: e.target.value })}
-                    />
-                  </div>
-                  <div className="grid gap-1.5">
-                    <Label>Allergies</Label>
-                    <Input
-                      placeholder="e.g. Penicillin, latex"
-                      value={form.allergies}
-                      onChange={e => setForm({ ...form, allergies: e.target.value })}
-                    />
-                  </div>
-                  <div className="grid gap-1.5">
-                    <Label>Medical history notes</Label>
-                    <Textarea
-                      rows={2}
-                      value={form.medicalNotes}
-                      onChange={e => setForm({ ...form, medicalNotes: e.target.value })}
-                    />
-                  </div>
-                  <div className="grid gap-1.5">
-                    <Label>Dental history notes</Label>
-                    <Textarea
-                      rows={2}
-                      value={form.dentalNotes}
-                      onChange={e => setForm({ ...form, dentalNotes: e.target.value })}
-                    />
-                  </div>
-                  <Button type="submit" disabled={create.isPending || !form.firstName.trim() || !form.lastName.trim()} className="mt-1">
-                    {create.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
-                    Register Patient
-                  </Button>
-                </form>
-              </DialogContent>
-            </Dialog>
+            <Button
+              className="gap-1.5"
+              onClick={() => {
+                setEditingPatient(null);
+                setFormDialogOpen(true);
+              }}
+            >
+              <UserPlus className="h-4 w-4" /> New Patient
+            </Button>
           ) : undefined
         }
       />
@@ -271,7 +148,14 @@ export default function Patients() {
               description="Register your first patient to get started."
               action={
                 canAdd ? (
-                  <Button variant="outline" onClick={() => setDialogOpen(true)} className="gap-1.5">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setEditingPatient(null);
+                      setFormDialogOpen(true);
+                    }}
+                    className="gap-1.5"
+                  >
                     <UserPlus className="h-4 w-4" /> New Patient
                   </Button>
                 ) : undefined
@@ -283,37 +167,123 @@ export default function Patients() {
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead>Patient</TableHead>
-                <TableHead>Gender</TableHead>
-                <TableHead>Date of Birth</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>Email</TableHead>
+                <TableHead>Gender / Age</TableHead>
+                <TableHead>Phone / Email</TableHead>
+                <TableHead>Smoking / Risk</TableHead>
+                <TableHead>Medical Alerts</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">Registered</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {query.data.map(p => (
-                <TableRow key={p.id} className="cursor-pointer hover:bg-accent/50" onClick={() => { window.location.href = `/patients/${p.id}`; }}>
+                <TableRow
+                  key={p.id}
+                  className="cursor-pointer hover:bg-accent/50"
+                  onClick={() => {
+                    window.location.href = `/patients/${p.id}`;
+                  }}
+                >
                   <TableCell>
-                    <Link href={`/patients/${p.id}`} className="flex items-center gap-2.5 font-medium" onClick={e => e.stopPropagation()}>
+                    <Link
+                      href={`/patients/${p.id}`}
+                      className="flex items-center gap-2.5 font-medium"
+                      onClick={e => e.stopPropagation()}
+                    >
                       <span className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-semibold">
                         {(p.firstName[0] + p.lastName[0]).toUpperCase()}
                       </span>
-                      {p.firstName} {p.lastName}
+                      <div>
+                        <p className="font-semibold text-foreground leading-tight">
+                          {p.firstName} {p.lastName}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">ID #{p.id}</p>
+                      </div>
                     </Link>
                   </TableCell>
-                  <TableCell>{genderLabel(p.gender)}</TableCell>
-                  <TableCell>{formatDate(p.dateOfBirth)}</TableCell>
-                  <TableCell>{p.phone || "—"}</TableCell>
-                  <TableCell>{p.email || "—"}</TableCell>
-                  <TableCell><StatusBadge status={p.status} /></TableCell>
-                  <TableCell className="text-right text-xs text-muted-foreground">{formatDate(p.registeredAt)}</TableCell>
+                  <TableCell>
+                    <div className="text-xs">
+                      <p>{genderLabel(p.gender)}</p>
+                      <p className="text-muted-foreground">{formatDate(p.dateOfBirth)}</p>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-xs">
+                      <p className="font-medium text-foreground">{p.phone || "—"}</p>
+                      <p className="text-muted-foreground truncate max-w-[150px]">{p.email || "—"}</p>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="space-y-1">
+                      {formatSmokerBadge(p.smokingStatus)}
+                      {p.bruxism && (
+                        <p className="text-[10px] text-muted-foreground">Bruxism</p>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="space-y-1 text-xs">
+                      {p.allergies ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-destructive">
+                          <AlertTriangle className="h-3 w-3 shrink-0" />
+                          <span className="truncate max-w-[120px]" title={p.allergies}>
+                            {p.allergies}
+                          </span>
+                        </span>
+                      ) : p.diabetes || p.bleedingDisorder || p.cardiovascular ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-400">
+                          <HeartPulse className="h-3 w-3 shrink-0" />
+                          <span className="truncate max-w-[120px]">
+                            {p.diabetes || p.bleedingDisorder || p.cardiovascular}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground text-[11px]">No alerts</span>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge status={p.status} />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-1.5" onClick={e => e.stopPropagation()}>
+                      {canEdit && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                          onClick={() => {
+                            setEditingPatient(p as Patient);
+                            setFormDialogOpen(true);
+                          }}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Edit
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-xs"
+                        asChild
+                      >
+                        <Link href={`/patients/${p.id}`}>View</Link>
+                      </Button>
+                    </div>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         )}
       </div>
+
+      {/* Patient Register / Edit Dialog */}
+      <PatientFormDialog
+        open={formDialogOpen}
+        onOpenChange={setFormDialogOpen}
+        patient={editingPatient}
+      />
     </DashboardLayout>
   );
 }

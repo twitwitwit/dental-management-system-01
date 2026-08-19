@@ -267,7 +267,7 @@ describe("patients", () => {
     )).toBe(true);
   });
 
-  it("creates and updates a patient", async () => {
+  it("creates and updates a patient with smoking status and medical information", async () => {
     const { ctx } = createAuthContext("receptionist");
     const caller = appRouter.createCaller(ctx);
     const created = await caller.patients.create({
@@ -279,18 +279,38 @@ describe("patients", () => {
       email: "test.patient@example.com",
       address: "123 Test St",
       bloodType: "A+",
+      smokingStatus: "current_heavy",
+      smokingDetails: "1 pack/day for 6 years",
+      alcoholUse: "occasional",
+      diabetes: "Type 2 (controlled)",
+      bleedingDisorder: "On Aspirin",
+      bruxism: true,
+      dentalAnxiety: "mild",
+      chiefComplaint: "Tooth sensitivity on lower left molar",
+      emergencyContactName: "John Patient",
+      emergencyContactPhone: "+15559998888",
+      emergencyContactRelation: "Spouse",
       status: "active",
     });
     expect(created.id).toBeGreaterThan(0);
 
     const updated = await caller.patients.update({
       id: created.id,
-      data: { allergies: "Latex" },
+      data: {
+        allergies: "Latex",
+        smokingStatus: "former",
+        smokingDetails: "Quit 6 months ago",
+      },
     });
     expect(updated.success).toBe(true);
 
     const fetched = await caller.patients.get({ id: created.id });
     expect(fetched?.allergies).toBe("Latex");
+    expect(fetched?.smokingStatus).toBe("former");
+    expect(fetched?.smokingDetails).toBe("Quit 6 months ago");
+    expect(fetched?.diabetes).toBe("Type 2 (controlled)");
+    expect(fetched?.bruxism).toBe(true);
+    expect(fetched?.emergencyContactName).toBe("John Patient");
   });
 });
 
