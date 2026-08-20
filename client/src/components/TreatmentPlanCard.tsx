@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import { CDTCodePicker } from "@/components/CDTCodePicker";
 import { CDTCode } from "@shared/cdtCodes";
 import { formatMoney } from "@/lib/format";
+import { getPhilippineCDTFee } from "@shared/philippinesPricing";
 
 interface TreatmentPlanCardProps {
   plan: {
@@ -83,11 +84,13 @@ export function TreatmentPlanCard({ plan, isDentist }: TreatmentPlanCardProps) {
   });
 
   const handleSelectCDTCode = (code: CDTCode) => {
-    setProcName(`[${code.code}] ${code.name}`);
-    setProcCost(String(code.defaultFee));
-    setProcDescription(code.description);
-    setAddProcDialogOpen(true);
-  };
+  setProcName(`[${code.code}] ${code.name}`);
+  setProcCost(
+    String(getPhilippineCDTFee(code.code, code.defaultFee)),
+  );
+  setProcDescription(code.description);
+  setAddProcDialogOpen(true);
+};
 
   const procs = procedures.data ?? [];
   const completedCount = procs.filter(p => p.status === "done").length;
@@ -302,7 +305,7 @@ export function TreatmentPlanCard({ plan, isDentist }: TreatmentPlanCardProps) {
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label>Standard Fee ($) *</Label>
+                <Label>Standard Fee (₱) *</Label>
                 <Input
                   type="number"
                   min={0}

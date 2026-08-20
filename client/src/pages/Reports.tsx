@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { useCurrentRole } from "@/lib/roles";
-import { formatDate, formatMoney, toDateStr } from "@/lib/format";
+import { formatCompactMoney, formatDate, formatMoney, formatStatusLabel, toDateStr } from "@/lib/format";
 import { EmptyState, PageHeader, SectionCard } from "@/components/dental";
 import { BarChart3, Download, Loader2, PieChart as PieIcon, Users } from "lucide-react";
 
@@ -155,12 +155,12 @@ export default function Reports() {
     <DashboardLayout>
       <PageHeader
         title="Reports & Analytics"
-        description="Appointment statistics, revenue, and patient demographics."
+        description="Review appointment volume, collections, and patient trends for the selected period."
       />
 
       <div className="grid gap-6">
         <SectionCard
-          title="Appointment statistics"
+          title="Appointment volume"
           actions={
             canExport ? (
               <Button variant="outline" size="sm" className="gap-1.5 h-8" onClick={exportAppointments}>
@@ -178,13 +178,13 @@ export default function Reports() {
             </div>
             {Object.entries(appointments.data?.byStatus ?? {}).map(([status, count]) => (
               <div key={status} className="rounded-xl bg-accent/60 px-3.5 py-2.5">
-                <p className="text-xs text-muted-foreground capitalize">{status.replaceAll("_", " ")}</p>
+                <p className="text-xs text-muted-foreground capitalize">{formatStatusLabel(status)}</p>
                 <p className="text-xl font-bold">{count}</p>
               </div>
             ))}
           </div>
           {!appointmentChart.length ? (
-            <EmptyState title="No appointment data in range" />
+            <EmptyState title="No appointments in this period" />
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={appointmentChart}>
@@ -202,7 +202,7 @@ export default function Reports() {
         </SectionCard>
 
         <SectionCard
-          title="Revenue report"
+          title="Collections"
           actions={
             canExport ? (
               <Button variant="outline" size="sm" className="gap-1.5 h-8" onClick={exportRevenue}>
@@ -213,7 +213,7 @@ export default function Reports() {
         >
           <div className="grid gap-3 mb-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-xl bg-accent/60 px-3.5 py-2.5">
-              <p className="text-xs text-muted-foreground">Total revenue (net)</p>
+              <p className="text-xs text-muted-foreground">Net collections</p>
               <p className="text-xl font-bold">
                 {revenue.isLoading ? "—" : formatMoney(revenue.data?.total ?? 0)}
               </p>
@@ -226,7 +226,7 @@ export default function Reports() {
             ))}
           </div>
           <div className="flex items-center gap-2 mb-3 flex-wrap">
-            <Label className="text-xs">Month</Label>
+            <Label className="text-xs">Filter by month</Label>
             <Input
               type="month"
               value={month}
@@ -240,15 +240,15 @@ export default function Reports() {
             )}
           </div>
           {!revenueChart.length ? (
-            <EmptyState title="No revenue data in range" />
+            <EmptyState title="No collections in this period" />
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={revenueChart}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                 <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `$${Number(v)}`} width={44} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={v => formatCompactMoney(Number(v))} width={44} />
                 <Tooltip
-                  formatter={(v: unknown) => [formatMoney(Number(v)), "Revenue"]}
+                  formatter={(v: unknown) => [formatMoney(Number(v)), "Collections"]}
                   contentStyle={{ borderRadius: 12, border: "1px solid #e5e7eb", fontSize: 12 }}
                 />
                 <Line
@@ -311,7 +311,7 @@ export default function Reports() {
                   </ul>
                 </>
               ) : (
-                <EmptyState title="No demographic data yet" />
+                <EmptyState title="No demographic information recorded" />
               )}
             </div>
           </SectionCard>
@@ -334,13 +334,13 @@ export default function Reports() {
                     {statusData.map((s, i) => (
                       <li key={s.name} className="flex items-center gap-2 capitalize">
                         <span className="h-2.5 w-2.5 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
-                        {s.name.replaceAll("_", " ")} — {s.value}
+                        {formatStatusLabel(s.name)} — {s.value}
                       </li>
                     ))}
                   </ul>
                 </>
               ) : (
-                <EmptyState title="No status data yet" />
+                <EmptyState title="No appointment status data" />
               )}
             </div>
           </SectionCard>

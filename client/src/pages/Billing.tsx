@@ -37,6 +37,7 @@ import {
 import { toast } from "sonner";
 import { CDTCodePicker } from "@/components/CDTCodePicker";
 import { CDTCode, getCDTCode } from "@shared/cdtCodes";
+import { getPhilippineCDTFee } from "@shared/philippinesPricing";
 
 type InvoiceItemRow = { description: string; quantity: number; unitPrice: number };
 
@@ -63,14 +64,14 @@ export default function Billing() {
       next[activeCdtRowIndex] = {
         description: `[${code.code}] ${code.name}`,
         quantity: 1,
-        unitPrice: code.defaultFee,
+        unitPrice: getPhilippineCDTFee(code.code, code.defaultFee),
       };
       setItems(next);
     } else {
       if (items.length === 1 && !items[0].description.trim() && items[0].unitPrice === 0) {
-        setItems([{ description: `[${code.code}] ${code.name}`, quantity: 1, unitPrice: code.defaultFee }]);
+        setItems([{ description: `[${code.code}] ${code.name}`, quantity: 1, unitPrice: getPhilippineCDTFee(code.code, code.defaultFee) }]);
       } else {
-        setItems([...items, { description: `[${code.code}] ${code.name}`, quantity: 1, unitPrice: code.defaultFee }]);
+        setItems([...items, { description: `[${code.code}] ${code.name}`, quantity: 1, unitPrice: getPhilippineCDTFee(code.code, code.defaultFee) }]);
       }
     }
     setActiveCdtRowIndex(null);
@@ -80,9 +81,9 @@ export default function Billing() {
     const code = getCDTCode(codeStr);
     if (!code) return;
     if (items.length === 1 && !items[0].description.trim() && items[0].unitPrice === 0) {
-      setItems([{ description: `[${code.code}] ${code.name}`, quantity: 1, unitPrice: code.defaultFee }]);
+      setItems([{ description: `[${code.code}] ${code.name}`, quantity: 1, unitPrice: getPhilippineCDTFee(code.code, code.defaultFee) }]);
     } else {
-      setItems([...items, { description: `[${code.code}] ${code.name}`, quantity: 1, unitPrice: code.defaultFee }]);
+      setItems([...items, { description: `[${code.code}] ${code.name}`, quantity: 1, unitPrice: getPhilippineCDTFee(code.code, code.defaultFee) }]);
     }
   };
 
@@ -117,7 +118,7 @@ export default function Billing() {
 
   const createInvoice = trpc.billing.createInvoice.useMutation({
     onSuccess: () => {
-      toast.success("Invoice created");
+      toast.success("Invoice created and ready for payment");
       setInvoiceDialog(false);
       setItems([{ description: "", quantity: 1, unitPrice: 0 }]);
       setDiscount("");
@@ -135,7 +136,7 @@ export default function Billing() {
 
   const recordPayment = trpc.billing.recordPayment.useMutation({
     onSuccess: res => {
-      toast.success(`Payment recorded. New balance: ${formatMoney(res.newBalance.balance)}`);
+      toast.success(`Payment posted. Remaining balance: ${formatMoney(res.newBalance.balance)}`);
       setPaymentDialog(false);
       setPaymentAmount("");
       utils.billing.invoices.invalidate();
@@ -157,7 +158,7 @@ export default function Billing() {
     <DashboardLayout>
       <PageHeader
         title="Billing & Payments"
-        description="Invoices, payments, and outstanding balances."
+        description="Prepare invoices, post payments, and review outstanding balances."
         actions={
           canManage ? (
             <Dialog open={invoiceDialog} onOpenChange={setInvoiceDialog}>
@@ -227,17 +228,17 @@ export default function Billing() {
                     <div className="bg-muted/30 p-2.5 rounded-lg border border-border/50">
                       <p className="text-[11px] font-medium text-muted-foreground mb-1.5 flex items-center gap-1">
                         <Stethoscope className="h-3 w-3 text-primary" />
-                        Quick Add Common Procedures:
+                        Common procedures
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {[
-                          { code: "D0120", label: "D0120 Exam ($55)" },
-                          { code: "D1110", label: "D1110 Adult Cleaning ($95)" },
-                          { code: "D0274", label: "D0274 4-Bitewings ($70)" },
-                          { code: "D2391", label: "D2391 Posterior Composite ($175)" },
-                          { code: "D2740", label: "D2740 Ceramic Crown ($950)" },
-                          { code: "D7140", label: "D7140 Extraction ($160)" },
-                          { code: "D3330", label: "D3330 Root Canal ($1,050)" },
+                          { code: "D0120", label: "D0120 Exam" },
+                          { code: "D1110", label: "D1110 Adult cleaning" },
+                          { code: "D0274", label: "D0274 Bitewings" },
+                          { code: "D2391", label: "D2391 Composite filling" },
+                          { code: "D2740", label: "D2740 Ceramic crown" },
+                          { code: "D7140", label: "D7140 Extraction" },
+                          { code: "D3330", label: "D3330 Root canal" },
                         ].map(p => (
                           <button
                             key={p.code}
@@ -245,7 +246,7 @@ export default function Billing() {
                             onClick={() => handleQuickPreset(p.code)}
                             className="text-[11px] px-2 py-0.5 rounded-md bg-background border hover:bg-primary/10 hover:border-primary/40 hover:text-primary transition-all text-muted-foreground"
                           >
-                            + {p.label}
+                            + {p.label} ({formatMoney(getPhilippineCDTFee(p.code, getCDTCode(p.code)?.defaultFee ?? 0))})
                           </button>
                         ))}
                       </div>
@@ -290,7 +291,7 @@ export default function Billing() {
                           type="number"
                           min={0}
                           step="0.01"
-                          placeholder="Price"
+                          placeholder="Unit price (₱)"
                           value={it.unitPrice || ""}
                           onChange={e => {
                             const next = [...items];
@@ -340,11 +341,11 @@ export default function Billing() {
 
                   <div className="grid grid-cols-3 gap-3">
                     <div className="grid gap-1.5">
-                      <Label>Discount ($)</Label>
+                      <Label>Discount (₱)</Label>
                       <Input type="number" min={0} value={discount} onChange={e => setDiscount(e.target.value)} />
                     </div>
                     <div className="grid gap-1.5">
-                      <Label>Tax ($)</Label>
+                      <Label>Tax (₱)</Label>
                       <Input type="number" min={0} value={tax} onChange={e => setTax(e.target.value)} />
                     </div>
                     <div className="grid gap-1.5">
@@ -394,7 +395,7 @@ export default function Billing() {
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
           </div>
         ) : !invoices.data?.length ? (
-          <EmptyState title="No invoices yet" description="Create an invoice to bill a patient." />
+          <EmptyState title="No invoices recorded" description="Create an invoice to bill a patient." />
         ) : (
           <Table>
             <TableHeader>
@@ -488,7 +489,7 @@ export default function Billing() {
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <SectionCard title="Payment history">
           {!payments.data?.length ? (
-            <EmptyState title="No payments recorded yet" />
+            <EmptyState title="No payments recorded" />
           ) : (
             <ul className="divide-y divide-border/70">
               {payments.data.map(p => {
@@ -582,7 +583,7 @@ export default function Billing() {
               </Select>
             </div>
             <div className="grid gap-1.5">
-              <Label>Amount ($)</Label>
+              <Label>Amount (₱)</Label>
               <Input type="number" min={0} step="0.01" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} />
             </div>
             <div className="grid gap-1.5">

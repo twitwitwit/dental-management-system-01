@@ -74,7 +74,7 @@ export default function Insurance() {
 
   const addProvider = trpc.insurance.addProvider.useMutation({
     onSuccess: () => {
-      toast.success("Insurance provider added");
+      toast.success("Insurance provider saved");
       setProviderDialog(false);
       setProviderForm({ name: "", contactPhone: "", website: "" });
       utils.insurance.providers.invalidate();
@@ -84,7 +84,7 @@ export default function Insurance() {
 
   const addPolicy = trpc.insurance.addPatientInsurance.useMutation({
     onSuccess: () => {
-      toast.success("Insurance policy added");
+      toast.success("Patient policy saved");
       setPolicyDialog(false);
       setPolicyForm({
         patientId: "",
@@ -103,7 +103,7 @@ export default function Insurance() {
 
   const addClaim = trpc.insurance.createClaim.useMutation({
     onSuccess: res => {
-      toast.success(`Claim ${res.claimNumber} created`);
+      toast.success(`Claim ${res.claimNumber} filed`);
       setClaimDialog(false);
       setClaimForm({ patientId: "", patientInsuranceId: "", amount: "", description: "" });
       utils.insurance.claims.invalidate();
@@ -138,7 +138,7 @@ export default function Insurance() {
     <DashboardLayout>
       <PageHeader
         title="Insurance Management"
-        description="Providers, patient insurance policies, and claims tracking."
+        description="Maintain coverage details and track claims for insured patients."
         actions={
           <div className="flex flex-wrap gap-2">
             {canAddProvider ? (
@@ -163,7 +163,7 @@ export default function Insurance() {
       <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
         <SectionCard title="Insurance providers">
           {!providers.data?.length ? (
-            <EmptyState title="No providers yet" description="Add an insurance provider to get started." />
+            <EmptyState title="No insurance providers recorded" description="Add a provider before attaching coverage to a patient." />
           ) : (
             <ul className="divide-y divide-border/70">
               {providers.data.map(p => (
@@ -180,7 +180,7 @@ export default function Insurance() {
 
         <SectionCard title="Patient policies">
           {!policies.data?.length ? (
-            <EmptyState title="No policies yet" />
+            <EmptyState title="No patient policies recorded" />
           ) : (
             <ul className="divide-y divide-border/70">
               {policies.data.map(p => {
@@ -214,7 +214,7 @@ export default function Insurance() {
           className="xl:col-span-1"
         >
           {!claims.data?.length ? (
-            <EmptyState title="No claims filed yet" />
+            <EmptyState title="No claims filed" />
           ) : (
             <ul className="divide-y divide-border/70">
               {claims.data.map(c => {
@@ -262,7 +262,7 @@ export default function Insurance() {
       <Dialog open={providerDialog} onOpenChange={setProviderDialog}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Add Insurance Provider</DialogTitle>
+            <DialogTitle>Add insurance provider</DialogTitle>
           </DialogHeader>
           <form
             className="grid gap-3.5"
@@ -299,7 +299,7 @@ export default function Insurance() {
       <Dialog open={policyDialog} onOpenChange={setPolicyDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Add Patient Insurance Policy</DialogTitle>
+            <DialogTitle>Attach patient coverage</DialogTitle>
           </DialogHeader>
           <form
             className="grid gap-3.5"
@@ -371,11 +371,11 @@ export default function Insurance() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">
-                <Label>Co-pay ($)</Label>
+                <Label>Co-pay (₱)</Label>
                 <Input type="number" min={0} value={policyForm.coPay} onChange={e => setPolicyForm({ ...policyForm, coPay: e.target.value })} />
               </div>
               <div className="grid gap-1.5">
-                <Label>Deductible ($)</Label>
+                <Label>Deductible (₱)</Label>
                 <Input type="number" min={0} value={policyForm.deductible} onChange={e => setPolicyForm({ ...policyForm, deductible: e.target.value })} />
               </div>
             </div>
@@ -391,7 +391,7 @@ export default function Insurance() {
       <Dialog open={claimDialog} onOpenChange={setClaimDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>File Insurance Claim</DialogTitle>
+            <DialogTitle>File an insurance claim</DialogTitle>
           </DialogHeader>
           <form
             className="grid gap-3.5"
@@ -451,7 +451,7 @@ export default function Insurance() {
               </Select>
             </div>
             <div className="grid gap-1.5">
-              <Label>Claim amount ($) *</Label>
+              <Label>Claim amount (₱) *</Label>
               <Input type="number" min={0} step="0.01" value={claimForm.amount} onChange={e => setClaimForm({ ...claimForm, amount: e.target.value })} />
             </div>
             <div className="grid gap-1.5">

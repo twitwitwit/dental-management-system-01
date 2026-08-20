@@ -24,7 +24,7 @@ const DEFAULT_FORM: ClinicForm = {
   phone: "",
   email: "",
   workingHours: "",
-  currency: "USD",
+  currency: "PHP",
 };
 
 export default function SettingsPage() {
@@ -55,7 +55,7 @@ export default function SettingsPage() {
       phone: map.get("clinic.phone") ?? "",
       email: map.get("clinic.email") ?? "",
       workingHours: map.get("clinic.workingHours") ?? "",
-      currency: map.get("clinic.currency") ?? "USD",
+      currency: map.get("clinic.currency") ?? "PHP",
     });
   }, [settings.data]);
 
@@ -65,7 +65,7 @@ export default function SettingsPage() {
     <DashboardLayout>
       <PageHeader
         title="Settings"
-        description="Clinic information and system preferences. Admin access only."
+        description="Clinic profile and financial settings. Admin access only."
       />
 
       <SectionCard title="Clinic information">
@@ -79,34 +79,34 @@ export default function SettingsPage() {
               phone: form.phone || null,
               email: form.email || null,
               workingHours: form.workingHours || null,
-              currency: form.currency.toUpperCase().slice(0, 8) || "USD",
+              currency: form.currency.toUpperCase().slice(0, 8) || "PHP",
             });
           }}
         >
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-1.5">
               <Label>Clinic name *</Label>
-              <Input value={form.clinicName} onChange={e => set("clinicName", e.target.value)} placeholder="e.g. Dentacare Clinic" />
+              <Input value={form.clinicName} onChange={e => set("clinicName", e.target.value)} placeholder="e.g. Riverside Dental Clinic" />
             </div>
             <div className="grid gap-1.5">
               <Label>Currency</Label>
-              <Input value={form.currency} onChange={e => set("currency", e.target.value)} placeholder="USD" />
+              <Input value={form.currency} onChange={e => set("currency", e.target.value)} placeholder="PHP" />
             </div>
             <div className="grid gap-1.5 sm:col-span-2">
               <Label>Address</Label>
-              <Input value={form.address} onChange={e => set("address", e.target.value)} placeholder="Street, city, ZIP" />
+              <Input value={form.address} onChange={e => set("address", e.target.value)} placeholder="Street, barangay, city, province" />
             </div>
             <div className="grid gap-1.5">
               <Label>Phone</Label>
-              <Input value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="+1 555 0100" />
+              <Input value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="+63 917 123 4567" />
             </div>
             <div className="grid gap-1.5">
               <Label>Email</Label>
-              <Input type="email" value={form.email} onChange={e => set("email", e.target.value)} placeholder="frontdesk@dentacare.com" />
+              <Input type="email" value={form.email} onChange={e => set("email", e.target.value)} placeholder="clinic@example.com" />
             </div>
             <div className="grid gap-1.5 sm:col-span-2">
               <Label>Working hours</Label>
-              <Input value={form.workingHours} onChange={e => set("workingHours", e.target.value)} placeholder="Mon–Fri 8:00–18:00, Sat 9:00–14:00" />
+              <Input value={form.workingHours} onChange={e => set("workingHours", e.target.value)} placeholder="Mon–Sat, 8:00 AM–6:00 PM" />
             </div>
           </div>
           <Button type="submit" disabled={bulk.isPending} className="gap-1.5 w-fit">

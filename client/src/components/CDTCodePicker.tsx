@@ -17,6 +17,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Search, Sparkles, Stethoscope } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  formatPhilippinePeso,
+  getPhilippineCDTFee,
+} from "@shared/philippinesPricing";
 
 interface CDTCodePickerProps {
   open: boolean;
@@ -47,7 +51,9 @@ export function CDTCodePicker({
   surface,
 }: CDTCodePickerProps) {
   const [search, setSearch] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<CDTCodeCategory | "All">("All");
+  const [selectedCategory, setSelectedCategory] = useState<
+    CDTCodeCategory | "All"
+  >("All");
 
   const results = useMemo(() => {
     return searchCDTCodes(search, selectedCategory);
@@ -69,17 +75,20 @@ export function CDTCodePicker({
               <Stethoscope className="h-4.5 w-4.5" />
             </div>
             <div>
-              <DialogTitle className="text-base font-semibold">
-                ADA / CDT Dental Procedure Codes
+              <DialogTitle>
+                Philippines ADA / CDT Dental Procedure Codes
               </DialogTitle>
               <p className="text-xs text-muted-foreground">
                 {toothNumber ? (
                   <span>
-                    Selected Tooth <strong className="text-foreground">#{toothNumber}</strong>
-                    {surface ? ` (${surface.toUpperCase()} surface)` : ""} ·{" "}
+                    Selected Tooth{" "}
+                    <strong className="text-foreground">#{toothNumber}</strong>
+                    {surface ? ` (${surface.toUpperCase()} surface)` : ""}{" "}
+                    ·{" "}
                   </span>
                 ) : null}
-                Select a standard dental procedure code to auto-populate descriptions and fees.
+                Select a standard dental procedure code with the clinic&apos;s
+                Philippine peso fee.
               </p>
             </div>
           </div>
@@ -163,7 +172,10 @@ export function CDTCodePicker({
                     </span>
                     <Badge
                       variant="outline"
-                      className={cn("text-[10px] py-0 px-1.5 font-normal", CATEGORY_COLORS[item.category])}
+                      className={cn(
+                        "text-[10px] py-0 px-1.5 font-normal",
+                        CATEGORY_COLORS[item.category]
+                      )}
                     >
                       {item.category}
                     </Badge>
@@ -175,7 +187,9 @@ export function CDTCodePicker({
 
                 <div className="text-right shrink-0">
                   <div className="text-sm font-bold text-foreground">
-                    ${item.defaultFee.toFixed(2)}
+                    {formatPhilippinePeso(
+                      getPhilippineCDTFee(item.code, item.defaultFee)
+                    )}
                   </div>
                   <Button
                     size="sm"

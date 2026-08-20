@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, like, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, like, lte, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   appointments,
@@ -10,6 +10,8 @@ import {
   inventoryMovements,
   invoiceItems,
   invoices,
+  patientAccounts,
+  patientDocuments,
   patientInsurance,
   patients,
   payments,
@@ -28,6 +30,7 @@ import {
   type InsertInvoice,
   type InsertInvoiceItem,
   type InsertPatient,
+  type InsertPatientDocument,
   type InsertPatientInsurance,
   type InsertPayment,
   type InsertPeriodontalStatus,
@@ -37,6 +40,7 @@ import {
   type InsertTreatmentProcedure,
   type InsertUser,
 } from "../drizzle/schema";
+import { randomUUID } from "node:crypto";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -53,6 +57,333 @@ export async function getDb() {
   }
   return _db;
 }
+
+export async function getPatientAccountByUserId(userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db
+    .select()
+    .from(patientAccounts)
+    .where(eq(patientAccounts.userId, userId))
+    .limit(1);
+  return rows[0];
+}
+
+export async function getPatientAccountByPatientId(patientId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db
+    .select()
+    .from(patientAccounts)
+    .where(eq(patientAccounts.patientId, patientId))
+    .limit(1);
+  return rows[0];
+}
+
+export async function getPatientPortalByUserId(userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const account = await getPatientAccountByUserId(userId);
+  if (!account) return undefined;
+  const patient = await getPatientById(account.patientId);
+  if (!patient) return undefined;
+  const userRows = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  return { account, patient, user: userRows[0] };
+}
+
+export async function createPatientPortalAccount(data: {
+  firstName: string;
+  lastName: string;
+  email: string;
+  passwordHash: string;
+  dateOfBirth?: string | null;
+  gender?: "male" | "female" | "other" | null;
+  phone?: string | null;
+  address?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return db.transaction(async tx => {
+    const patientResult = await tx.insert(patients).values({
+      firstName: data.firstName,
+      lastName: data.lastName,
+      email: data.email,
+      dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
+      gender: data.gender ?? null,
+      phone: data.phone ?? null,
+      address: data.address ?? null,
+      status: "active",
+    });
+    const patientId = Number(patientResult[0].insertId);
+
+    const userResult = await tx.insert(users).values({
+      openId: `patient_${randomUUID()}`,
+      name: `${data.firstName} ${data.lastName}`.trim(),
+      email: data.email,
+      loginMethod: "local_patient",
+      passwordHash: data.passwordHash,
+      role: "patient",
+      isActive: false,
+      phone: data.phone ?? null,
+    });
+    const userId = Number(userResult[0].insertId);
+
+    const accountResult = await tx.insert(patientAccounts).values({
+      userId,
+      patientId,
+      verificationStatus: "pending",
+    });
+
+    return {
+      userId,
+      patientId,
+      patientAccountId: Number(accountResult[0].insertId),
+    };
+  });
+}
+
+export async function updatePatientPortalVerification(
+  patientAccountId: number,
+  input: {
+    status: "verified" | "rejected" | "suspended";
+    note?: string | null;
+    verifiedByUserId: number;
+  },
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const accountRows = await db
+    .select()
+    .from(patientAccounts)
+    .where(eq(patientAccounts.id, patientAccountId))
+    .limit(1);
+  const account = accountRows[0];
+  if (!account) return undefined;
+
+  await db
+    .update(patientAccounts)
+    .set({
+      verificationStatus: input.status,
+      verificationNote: input.note ?? null,
+      verifiedAt: input.status === "verified" ? new Date() : null,
+      verifiedByUserId: input.verifiedByUserId,
+    })
+    .where(eq(patientAccounts.id, patientAccountId));
+
+  await db
+    .update(users)
+    .set({ isActive: input.status === "verified" })
+    .where(eq(users.id, account.userId));
+
+  return { ...account, verificationStatus: input.status };
+}
+
+export async function listPatientPortalAccounts(status?: "pending" | "verified" | "rejected" | "suspended") {
+  const db = await getDb();
+  if (!db) return [];
+  const accounts = await db
+    .select()
+    .from(patientAccounts)
+    .where(status ? eq(patientAccounts.verificationStatus, status) : undefined)
+    .orderBy(desc(patientAccounts.createdAt));
+
+  const result = [];
+  for (const account of accounts) {
+    const patient = await getPatientById(account.patientId);
+    const userRows = await db.select().from(users).where(eq(users.id, account.userId)).limit(1);
+    if (patient && userRows[0]) result.push({ account, patient, user: userRows[0] });
+  }
+  return result;
+}
+
+export async function listAvailableDentists() {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({ id: users.id, name: users.name, email: users.email })
+    .from(users)
+    .where(and(eq(users.role, "dentist"), eq(users.isActive, true)))
+    .orderBy(asc(users.name));
+}
+
+const PORTAL_SLOTS = [
+  ["09:00", "09:30"], ["09:30", "10:00"], ["10:00", "10:30"],
+  ["10:30", "11:00"], ["11:00", "11:30"], ["11:30", "12:00"],
+  ["13:00", "13:30"], ["13:30", "14:00"], ["14:00", "14:30"],
+  ["14:30", "15:00"], ["15:00", "15:30"], ["15:30", "16:00"],
+  ["16:00", "16:30"], ["16:30", "17:00"],
+] as const;
+
+export async function listAvailableDentistSlots(date: string, dentistId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const dentists = dentistId
+    ? await db
+        .select({ id: users.id, name: users.name })
+        .from(users)
+        .where(and(eq(users.id, dentistId), eq(users.role, "dentist"), eq(users.isActive, true)))
+    : await listAvailableDentists();
+
+  const results: Array<{ dentistId: number; dentistName: string; startTime: string; endTime: string }> = [];
+  for (const dentist of dentists) {
+    const booked = await db
+      .select({ startTime: appointments.startTime, endTime: appointments.endTime })
+      .from(appointments)
+      .where(
+        and(
+          eq(appointments.dentistId, dentist.id),
+          sql`DATE(${appointments.appointmentDate}) = ${date}`,
+          sql`${appointments.status} IN ('scheduled', 'confirmed')`,
+        ),
+      );
+    const occupied = new Set(booked.map(slot => `${slot.startTime}-${slot.endTime}`));
+    for (const [startTime, endTime] of PORTAL_SLOTS) {
+      if (!occupied.has(`${startTime}-${endTime}`)) {
+        results.push({
+          dentistId: dentist.id,
+          dentistName: dentist.name ?? "Dentist",
+          startTime,
+          endTime,
+        });
+      }
+    }
+  }
+  return results;
+}
+
+export async function createPatientPortalAppointment(data: {
+  patientId: number;
+  dentistId: number;
+  appointmentDate: string;
+  startTime: string;
+  endTime: string;
+  type: string;
+  notes?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const conflict = await db
+    .select({ id: appointments.id })
+    .from(appointments)
+    .where(
+      and(
+        eq(appointments.dentistId, data.dentistId),
+        sql`DATE(${appointments.appointmentDate}) = ${data.appointmentDate}`,
+        eq(appointments.startTime, data.startTime),
+        sql`${appointments.status} IN ('scheduled', 'confirmed')`,
+      ),
+    )
+    .limit(1);
+  if (conflict.length) throw new Error("That time has just been booked. Please choose another slot.");
+
+  const result = await db.insert(appointments).values({
+    patientId: data.patientId,
+    dentistId: data.dentistId,
+    appointmentDate: new Date(data.appointmentDate),
+    startTime: data.startTime,
+    endTime: data.endTime,
+    type: data.type,
+    status: "scheduled",
+    notes: data.notes ?? "Booked through the patient portal.",
+  });
+  return Number(result[0].insertId);
+}
+
+export async function getPatientPortalChart(patientId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const [conditions, surfaces, perio, plans, notes, documents] = await Promise.all([
+    db.select().from(toothConditions).where(eq(toothConditions.patientId, patientId)),
+    db.select().from(toothSurfaceConditions).where(eq(toothSurfaceConditions.patientId, patientId)),
+    db.select().from(periodontalStatus).where(eq(periodontalStatus.patientId, patientId)),
+    db.select().from(treatmentPlans).where(and(eq(treatmentPlans.patientId, patientId), eq(treatmentPlans.patientVisible, true))).orderBy(desc(treatmentPlans.updatedAt)),
+    db.select().from(clinicalNotes).where(and(eq(clinicalNotes.patientId, patientId), eq(clinicalNotes.patientVisible, true))).orderBy(desc(clinicalNotes.noteDate)),
+    db.select().from(patientDocuments).where(and(eq(patientDocuments.patientId, patientId), eq(patientDocuments.visibleToPatient, true))).orderBy(desc(patientDocuments.uploadedAt)),
+  ]);
+  return { conditions, surfaces, perio, plans, notes, documents };
+}
+
+export async function listPatientDocuments(patientId: number, visibleOnly = true) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(patientDocuments)
+    .where(visibleOnly
+      ? and(eq(patientDocuments.patientId, patientId), eq(patientDocuments.visibleToPatient, true))
+      : eq(patientDocuments.patientId, patientId))
+    .orderBy(desc(patientDocuments.uploadedAt));
+}
+
+export async function createPatientDocument(data: InsertPatientDocument) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(patientDocuments).values(data);
+  return Number(result[0].insertId);
+}
+
+export async function getPatientDocumentForView(documentId: number, patientId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db
+    .select()
+    .from(patientDocuments)
+    .where(and(
+      eq(patientDocuments.id, documentId),
+      eq(patientDocuments.patientId, patientId),
+      eq(patientDocuments.visibleToPatient, true),
+    ))
+    .limit(1);
+  return rows[0];
+}
+
+
+export async function updatePatientPortalProfile(patientId: number, userId: number, data: {
+  firstName: string;
+  lastName: string;
+  dateOfBirth?: string | null;
+  gender?: "male" | "female" | "other" | null;
+  phone?: string | null;
+  address?: string | null;
+  occupation?: string | null;
+  emergencyContactName?: string | null;
+  emergencyContactPhone?: string | null;
+  emergencyContactRelation?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.transaction(async tx => {
+    await tx.update(users).set({
+      name: `${data.firstName} ${data.lastName}`.trim(),
+      phone: data.phone ?? null,
+    }).where(eq(users.id, userId));
+    await tx.update(patients).set({
+      firstName: data.firstName,
+      lastName: data.lastName,
+      dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
+      gender: data.gender ?? null,
+      phone: data.phone ?? null,
+      address: data.address ?? null,
+      occupation: data.occupation ?? null,
+      emergencyContactName: data.emergencyContactName ?? null,
+      emergencyContactPhone: data.emergencyContactPhone ?? null,
+      emergencyContactRelation: data.emergencyContactRelation ?? null,
+    }).where(eq(patients.id, patientId));
+  });
+}
+
+export async function getPatientPortalProfile(patientId: number, userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select({ patient: patients, user: users })
+    .from(patients)
+    .innerJoin(users, eq(users.id, userId))
+    .where(and(eq(patients.id, patientId), eq(users.id, userId)))
+    .limit(1);
+  return rows[0];
+}
+
 
 export async function upsertUser(user: InsertUser): Promise<void> {
   if (!user.openId) {
@@ -672,10 +1003,40 @@ export async function updateClaim(id: number, data: Partial<InsertInsuranceClaim
 // ---------------------------------------------------------------------------
 // Users / staff
 // ---------------------------------------------------------------------------
+export async function createLocalUser(data: {
+  openId: string;
+  name: string;
+  email: string;
+  passwordHash: string;
+  role: "admin" | "dentist" | "receptionist" | "staff";
+  phone?: string | null;
+}) {
+  const database = await getDb();
+  if (!database) throw new Error("Database not available");
+
+  const result = await database.insert(users).values({
+    openId: data.openId,
+    name: data.name,
+    email: data.email,
+    loginMethod: "local",
+    passwordHash: data.passwordHash,
+    role: data.role,
+    phone: data.phone ?? null,
+    isActive: true,
+  });
+
+  return Number(result[0].insertId);
+}
+
+  
 export async function listStaffUsers() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(users).orderBy(users.name);
+  return db
+    .select()
+    .from(users)
+    .where(sql`${users.role} <> 'patient'`)
+    .orderBy(users.name);
 }
 
 export async function updateUserRoleAndStatus(

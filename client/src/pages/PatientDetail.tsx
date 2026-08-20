@@ -4,28 +4,45 @@ import { cn } from "@/lib/utils";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { PerioDialog } from "@/components/PerioDialog";
 import { useCurrentRole } from "@/lib/roles";
-import { formatDate } from "@/lib/format";
-import { CONDITION_COLORS, presetTeeth, ToothChart, type ChartPreset } from "@/components/ToothChart";
-import { PerioChart, perioSummary, type PerioCell, type PerioMap } from "@/components/PerioChart";
+import { formatDate, formatMoney } from "@/lib/format";
+import {
+  CONDITION_COLORS,
+  presetTeeth,
+  ToothChart,
+  type ChartPreset,
+} from "@/components/ToothChart";
+import {
+  PerioChart,
+  perioSummary,
+  type PerioCell,
+  type PerioMap,
+} from "@/components/PerioChart";
 import {
   SurfaceKey,
   ToothSurfaceChart,
   type SurfaceMap,
 } from "@/components/ToothSurfaceChart";
-import {
-  EmptyState,
-  SectionCard,
-  StatusBadge,
-} from "@/components/dental";
+import { EmptyState, SectionCard, StatusBadge } from "@/components/dental";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -54,14 +71,26 @@ import { PatientFormDialog } from "@/components/PatientFormDialog";
 import type { Patient } from "@shared/types";
 import { CDTCode, getCDTCode } from "@shared/cdtCodes";
 
+import { getPhilippineCDTFee } from "@shared/philippinesPricing";
+
 const TOOTH_CONDITIONS = [
-  "healthy", "decay", "filling", "crown", "extraction",
-  "implant", "root_canal", "missing", "veneers", "bridge",
+  "healthy",
+  "decay",
+  "filling",
+  "crown",
+  "extraction",
+  "implant",
+  "root_canal",
+  "missing",
+  "veneers",
+  "bridge",
 ];
 
 export default function PatientDetail({ id }: { id: number }) {
   const utils = trpc.useUtils();
   const role = useCurrentRole();
+  const [auditPurpose, setAuditPurpose] = useState("");
+  const [purposeSubmitted, setPurposeSubmitted] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedTooth, setSelectedTooth] = useState<string | null>(null);
@@ -87,36 +116,58 @@ export default function PatientDetail({ id }: { id: number }) {
   const [newPlanTitle, setNewPlanTitle] = useState("");
   const [newPlanDiagnosis, setNewPlanDiagnosis] = useState("");
   const [newPlanProcedures, setNewPlanProcedures] = useState<
-    { toothNumber: string; code: string; name: string; cost: number; description: string }[]
+    {
+      toothNumber: string;
+      code: string;
+      name: string;
+      cost: number;
+      description: string;
+    }[]
   >([]);
   const [newPlanCdtPickerOpen, setNewPlanCdtPickerOpen] = useState(false);
   const [toothCdtPickerOpen, setToothCdtPickerOpen] = useState(false);
 
-  const patient = trpc.patients.get.useQuery({ id }, { enabled: !!role && !!id });
+  const patient = trpc.patients.get.useQuery(
+    { id },
+    { enabled: !!role && !!id }
+  );
   const conditions = trpc.clinical.toothConditions.useQuery(
     { patientId: id },
-    { enabled: !!role },
+    { enabled: !!role }
   );
   const isDentist = role === "admin" || role === "dentist";
   const surfaces = trpc.clinical.surfaces.useQuery(
     { patientId: id },
-    { enabled: !!role && isDentist },
+    { enabled: !!role && isDentist }
   );
   const plans = trpc.clinical.plans.useQuery(
     { patientId: id },
-    { enabled: !!role },
+    { enabled: !!role }
   );
   const notes = trpc.clinical.notes.useQuery(
     { patientId: id },
-    { enabled: !!role },
+    { enabled: !!role }
   );
   const perio = trpc.clinical.perio.useQuery(
     { patientId: id },
-    { enabled: !!role && isDentist },
+    { enabled: !!role && isDentist }
   );
   const insurances = trpc.insurance.patientInsurance.useQuery(
     { patientId: id },
-    { enabled: !!role },
+    { enabled: !!role }
+  );
+
+  const canViewBilling =
+    role === "admin" || role === "dentist" || role === "receptionist";
+
+  const patientInvoices = trpc.billing.invoices.useQuery(
+    { patientId: id },
+    { enabled: !!role && canViewBilling }
+  );
+
+  const patientPayments = trpc.billing.payments.useQuery(
+    { patientId: id },
+    { enabled: !!role && canViewBilling }
   );
 
   const setTooth = trpc.clinical.setToothCondition.useMutation({
@@ -197,7 +248,8 @@ export default function PatientDetail({ id }: { id: number }) {
       setNewPlanProcedures([]);
       utils.clinical.plans.invalidate();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to create treatment plan";
+      const msg =
+        err instanceof Error ? err.message : "Failed to create treatment plan";
       toast.error(msg);
     }
   };
@@ -234,7 +286,10 @@ export default function PatientDetail({ id }: { id: number }) {
     return (
       <DashboardLayout>
         <div className="py-16">
-          <EmptyState title="Patient not found" description="This patient record could not be located." />
+          <EmptyState
+            title="Patient not found"
+            description="This patient record could not be located."
+          />
         </div>
       </DashboardLayout>
     );
@@ -245,7 +300,7 @@ export default function PatientDetail({ id }: { id: number }) {
       const key = c.mode === "plan" ? `${c.toothNumber}:plan` : c.toothNumber;
       return { ...acc, [key]: c.condition };
     },
-    {} as Record<string, string>,
+    {} as Record<string, string>
   );
   const statusMap: Record<string, string> = {};
   const planMap: Record<string, string> = {};
@@ -258,49 +313,99 @@ export default function PatientDetail({ id }: { id: number }) {
       ...acc,
       [p.toothNumber]: {
         toothNumber: p.toothNumber,
-        pd: [Number(p.pd1), Number(p.pd2), Number(p.pd3), Number(p.pd4), Number(p.pd5), Number(p.pd6)] as [number, number, number, number, number, number],
+        pd: [
+          Number(p.pd1),
+          Number(p.pd2),
+          Number(p.pd3),
+          Number(p.pd4),
+          Number(p.pd5),
+          Number(p.pd6),
+        ] as [number, number, number, number, number, number],
         recession: Number(p.recession),
         mobility: p.mobility,
         bleeding: Boolean(p.bleeding),
         plaque: Boolean(p.plaque),
       },
     }),
-    {} as PerioMap,
+    {} as PerioMap
   );
 
   const surfaceMap = (surfaces.data ?? []).reduce(
     (acc, s) => ({
       ...acc,
-      [s.toothNumber]: { ...(acc[s.toothNumber] ?? {}), [s.surface]: s.condition },
+      [s.toothNumber]: {
+        ...(acc[s.toothNumber] ?? {}),
+        [s.surface]: s.condition,
+      },
     }),
-    {} as SurfaceMap,
+    {} as SurfaceMap
   );
 
-  const formatSmokerBadge = (status: string | null | undefined, details?: string | null) => {
+  const invoiceRows = patientInvoices.data ?? [];
+  const paymentRows = patientPayments.data ?? [];
+
+  const totalInvoiced = invoiceRows.reduce(
+    (total, invoice) => total + Number(invoice.total ?? 0),
+    0
+  );
+
+  const netPaid = paymentRows.reduce(
+    (total, payment) =>
+      total +
+      Number(payment.amount ?? 0) * (payment.type === "refund" ? -1 : 1),
+    0
+  );
+
+  const outstandingBalance = Math.max(totalInvoiced - netPaid, 0);
+
+  const formatSmokerBadge = (
+    status: string | null | undefined,
+    details?: string | null
+  ) => {
     if (!status || status === "never") {
       return (
-        <Badge variant="outline" className="text-xs font-semibold px-2 py-0.5 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10">
+        <Badge
+          variant="outline"
+          className="text-xs font-semibold px-2 py-0.5 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10"
+        >
           Non-Smoker
         </Badge>
       );
     }
     if (status === "former") {
       return (
-        <Badge variant="outline" className="text-xs font-semibold px-2 py-0.5 border-amber-500/40 text-amber-700 dark:text-amber-300 bg-amber-500/10" title={details || undefined}>
+        <Badge
+          variant="outline"
+          className="text-xs font-semibold px-2 py-0.5 border-amber-500/40 text-amber-700 dark:text-amber-300 bg-amber-500/10"
+          title={details || undefined}
+        >
           Former Smoker {details ? `(${details})` : ""}
         </Badge>
       );
     }
     if (status === "vaping") {
       return (
-        <Badge variant="outline" className="text-xs font-semibold px-2 py-0.5 border-purple-500/40 text-purple-700 dark:text-purple-300 bg-purple-500/10" title={details || undefined}>
+        <Badge
+          variant="outline"
+          className="text-xs font-semibold px-2 py-0.5 border-purple-500/40 text-purple-700 dark:text-purple-300 bg-purple-500/10"
+          title={details || undefined}
+        >
           Vaping / E-Cigarettes {details ? `(${details})` : ""}
         </Badge>
       );
     }
-    const label = status === "current_heavy" ? "Heavy Smoker (10+/day)" : status === "chewing_tobacco" ? "Chewing Tobacco" : "Current Smoker";
+    const label =
+      status === "current_heavy"
+        ? "Heavy Smoker (10+/day)"
+        : status === "chewing_tobacco"
+          ? "Chewing Tobacco"
+          : "Current Smoker";
     return (
-      <Badge variant="destructive" className="text-xs font-semibold px-2 py-0.5 gap-1.5 bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30" title={details || undefined}>
+      <Badge
+        variant="destructive"
+        className="text-xs font-semibold px-2 py-0.5 gap-1.5 bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30"
+        title={details || undefined}
+      >
         <Cigarette className="h-3 w-3" />
         {label} {details ? `— ${details}` : ""}
       </Badge>
@@ -310,7 +415,10 @@ export default function PatientDetail({ id }: { id: number }) {
   return (
     <DashboardLayout>
       <div className="mb-5">
-        <Link href="/patients" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+        <Link
+          href="/patients"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
           <ArrowLeft className="h-4 w-4" /> All patients
         </Link>
       </div>
@@ -329,7 +437,9 @@ export default function PatientDetail({ id }: { id: number }) {
                 <StatusBadge status={p.status} />
               </div>
               <p className="text-sm text-muted-foreground mt-0.5">
-                {p.gender ? `${p.gender.charAt(0).toUpperCase() + p.gender.slice(1)}, ` : ""}
+                {p.gender
+                  ? `${p.gender.charAt(0).toUpperCase() + p.gender.slice(1)}, `
+                  : ""}
                 DOB {formatDate(p.dateOfBirth)} · ID #{p.id}
                 {p.occupation ? ` · ${p.occupation}` : ""}
               </p>
@@ -337,7 +447,9 @@ export default function PatientDetail({ id }: { id: number }) {
           </div>
 
           <div className="flex gap-2 flex-wrap items-center">
-            {role === "admin" || role === "dentist" || role === "receptionist" ? (
+            {role === "admin" ||
+            role === "dentist" ||
+            role === "receptionist" ? (
               <Button
                 variant="default"
                 className="gap-1.5 shadow-sm"
@@ -347,12 +459,22 @@ export default function PatientDetail({ id }: { id: number }) {
               </Button>
             ) : null}
             {role === "admin" || role === "receptionist" ? (
-              <Button variant="outline" className="gap-1.5" onClick={() => window.location.href = "/appointments"}>
+              <Button
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => (window.location.href = "/appointments")}
+              >
                 <CalendarPlus className="h-4 w-4" /> Appointment
               </Button>
             ) : null}
-            {role === "admin" || role === "dentist" || role === "receptionist" ? (
-              <Button variant="outline" className="gap-1.5" onClick={() => window.location.href = "/billing"}>
+            {role === "admin" ||
+            role === "dentist" ||
+            role === "receptionist" ? (
+              <Button
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => (window.location.href = "/billing")}
+              >
                 <FileText className="h-4 w-4" /> Invoice
               </Button>
             ) : null}
@@ -367,44 +489,65 @@ export default function PatientDetail({ id }: { id: number }) {
           {formatSmokerBadge(p.smokingStatus, p.smokingDetails)}
 
           {p.allergies ? (
-            <Badge variant="destructive" className="text-xs font-semibold px-2 py-0.5 gap-1 bg-destructive/15 text-destructive border border-destructive/30">
+            <Badge
+              variant="destructive"
+              className="text-xs font-semibold px-2 py-0.5 gap-1 bg-destructive/15 text-destructive border border-destructive/30"
+            >
               <AlertTriangle className="h-3 w-3" />
               Allergies: {p.allergies}
             </Badge>
           ) : null}
 
           {p.diabetes ? (
-            <Badge variant="outline" className="text-xs font-medium px-2 py-0.5 border-amber-500/40 text-amber-800 dark:text-amber-300 bg-amber-500/10">
+            <Badge
+              variant="outline"
+              className="text-xs font-medium px-2 py-0.5 border-amber-500/40 text-amber-800 dark:text-amber-300 bg-amber-500/10"
+            >
               Diabetes: {p.diabetes}
             </Badge>
           ) : null}
 
           {p.bleedingDisorder ? (
-            <Badge variant="destructive" className="text-xs font-semibold px-2 py-0.5 border-rose-500/40 text-rose-700 dark:text-rose-300 bg-rose-500/10">
+            <Badge
+              variant="destructive"
+              className="text-xs font-semibold px-2 py-0.5 border-rose-500/40 text-rose-700 dark:text-rose-300 bg-rose-500/10"
+            >
               Bleeding/Anticoagulant: {p.bleedingDisorder}
             </Badge>
           ) : null}
 
           {p.cardiovascular ? (
-            <Badge variant="outline" className="text-xs font-medium px-2 py-0.5 border-blue-500/40 text-blue-800 dark:text-blue-300 bg-blue-500/10">
+            <Badge
+              variant="outline"
+              className="text-xs font-medium px-2 py-0.5 border-blue-500/40 text-blue-800 dark:text-blue-300 bg-blue-500/10"
+            >
               Cardio: {p.cardiovascular}
             </Badge>
           ) : null}
 
           {p.bruxism ? (
-            <Badge variant="outline" className="text-xs font-medium px-2 py-0.5 border-indigo-500/40 text-indigo-800 dark:text-indigo-300 bg-indigo-500/10">
+            <Badge
+              variant="outline"
+              className="text-xs font-medium px-2 py-0.5 border-indigo-500/40 text-indigo-800 dark:text-indigo-300 bg-indigo-500/10"
+            >
               Bruxism (Grinding)
             </Badge>
           ) : null}
 
           {p.dentalAnxiety && p.dentalAnxiety !== "none" ? (
-            <Badge variant="outline" className="text-xs font-medium px-2 py-0.5 border-purple-500/40 text-purple-800 dark:text-purple-300 bg-purple-500/10">
+            <Badge
+              variant="outline"
+              className="text-xs font-medium px-2 py-0.5 border-purple-500/40 text-purple-800 dark:text-purple-300 bg-purple-500/10"
+            >
               Anxiety: {p.dentalAnxiety}
             </Badge>
           ) : null}
 
           {p.isPregnant ? (
-            <Badge variant="outline" className="text-xs font-semibold px-2 py-0.5 border-pink-500/40 text-pink-800 dark:text-pink-300 bg-pink-500/10">
+            <Badge
+              variant="outline"
+              className="text-xs font-semibold px-2 py-0.5 border-pink-500/40 text-pink-800 dark:text-pink-300 bg-pink-500/10"
+            >
               Pregnant / Nursing
             </Badge>
           ) : null}
@@ -423,15 +566,27 @@ export default function PatientDetail({ id }: { id: number }) {
               className="sm:col-span-2 lg:col-span-2"
             />
           ) : null}
-          <Info label="Registered" value={formatDate(p.registeredAt)} className={p.emergencyContactName ? "sm:col-span-2" : "sm:col-span-2 lg:col-span-4"} />
+          <Info
+            label="Registered"
+            value={formatDate(p.registeredAt)}
+            className={
+              p.emergencyContactName
+                ? "sm:col-span-2"
+                : "sm:col-span-2 lg:col-span-4"
+            }
+          />
         </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="mb-5">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="clinical" disabled={!isDentist}>Clinical</TabsTrigger>
-          <TabsTrigger value="notes" disabled={!isDentist}>Notes</TabsTrigger>
+          <TabsTrigger value="clinical" disabled={!isDentist}>
+            Clinical
+          </TabsTrigger>
+          <TabsTrigger value="notes" disabled={!isDentist}>
+            Notes
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="grid gap-6 lg:grid-cols-2">
@@ -447,7 +602,9 @@ export default function PatientDetail({ id }: { id: number }) {
                       onClick={() => setChartMode(m)}
                       className={cn(
                         "rounded-md px-3 py-1 text-xs font-medium transition-colors",
-                        chartMode === m ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                        chartMode === m
+                          ? "bg-card text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
                       )}
                     >
                       {m === "status" ? "Status" : "Plan"}
@@ -466,19 +623,35 @@ export default function PatientDetail({ id }: { id: number }) {
                     }}
                     className={cn(
                       "rounded-md border px-2 py-1 text-[11px] font-medium transition-colors",
-                      (t === "showBone" ? showBone : t === "showPulp" ? showPulp : showWisdom)
+                      (
+                        t === "showBone"
+                          ? showBone
+                          : t === "showPulp"
+                            ? showPulp
+                            : showWisdom
+                      )
                         ? "border-primary/40 bg-primary/5 text-primary"
-                        : "border-border text-muted-foreground",
+                        : "border-border text-muted-foreground"
                     )}
                   >
-                    {t === "showBone" ? "Bone" : t === "showPulp" ? "Pulp" : "Wisdom teeth"}
+                    {t === "showBone"
+                      ? "Bone"
+                      : t === "showPulp"
+                        ? "Pulp"
+                        : "Wisdom teeth"}
                   </button>
                 ))}
               </div>
             )}
             <ToothChart
               conditions={statusMap}
-              planConditions={chartMode === "plan" ? undefined : (Object.keys(planMap).length ? planMap : undefined)}
+              planConditions={
+                chartMode === "plan"
+                  ? undefined
+                  : Object.keys(planMap).length
+                    ? planMap
+                    : undefined
+              }
               selected={selectedTooth}
               onSelect={n => {
                 setSelectedTooth(n);
@@ -493,8 +666,18 @@ export default function PatientDetail({ id }: { id: number }) {
             />
             {isDentist && (
               <div className="mt-4 flex flex-wrap items-center justify-center gap-1.5">
-                <span className="mr-1 text-[11px] text-muted-foreground">Quick groups:</span>
-                {(Object.keys({ all: 1, upper: 1, lower: 1, front6: 1, molars: 1 }) as ChartPreset[]).map(p => (
+                <span className="mr-1 text-[11px] text-muted-foreground">
+                  Quick groups:
+                </span>
+                {(
+                  Object.keys({
+                    all: 1,
+                    upper: 1,
+                    lower: 1,
+                    front6: 1,
+                    molars: 1,
+                  }) as ChartPreset[]
+                ).map(p => (
                   <button
                     key={p}
                     type="button"
@@ -504,7 +687,11 @@ export default function PatientDetail({ id }: { id: number }) {
                     }}
                     className="rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors"
                   >
-                    {p === "front6" ? "Front six" : p === "all" ? "All" : p.charAt(0).toUpperCase() + p.slice(1)}
+                    {p === "front6"
+                      ? "Front six"
+                      : p === "all"
+                        ? "All"
+                        : p.charAt(0).toUpperCase() + p.slice(1)}
                   </button>
                 ))}
                 <button
@@ -523,8 +710,14 @@ export default function PatientDetail({ id }: { id: number }) {
             </p>
             <div className="mt-4 flex flex-wrap gap-1.5 justify-center">
               {Object.entries(CONDITION_COLORS).map(([k, v]) => (
-                <span key={k} className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: v }} />
+                <span
+                  key={k}
+                  className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"
+                >
+                  <span
+                    className="h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: v }}
+                  />
                   {k.replaceAll("_", " ")}
                 </span>
               ))}
@@ -550,7 +743,8 @@ export default function PatientDetail({ id }: { id: number }) {
                 {p.chiefComplaint && (
                   <div className="p-2.5 rounded-lg bg-primary/5 border border-primary/20">
                     <span className="font-bold text-primary flex items-center gap-1 mb-0.5">
-                      <Sparkles className="h-3.5 w-3.5" /> Chief Complaint / Reason for Visit:
+                      <Sparkles className="h-3.5 w-3.5" /> Chief Complaint /
+                      Reason for Visit:
                     </span>
                     <p className="text-foreground">{p.chiefComplaint}</p>
                   </div>
@@ -558,57 +752,99 @@ export default function PatientDetail({ id }: { id: number }) {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <span className="font-semibold text-muted-foreground">Tobacco & Smoking:</span>
-                    <div>{formatSmokerBadge(p.smokingStatus, p.smokingDetails)}</div>
+                    <span className="font-semibold text-muted-foreground">
+                      Tobacco & Smoking:
+                    </span>
+                    <div>
+                      {formatSmokerBadge(p.smokingStatus, p.smokingDetails)}
+                    </div>
                   </div>
                   <div className="space-y-1">
-                    <span className="font-semibold text-muted-foreground">Alcohol Consumption:</span>
-                    <p className="font-medium text-foreground capitalize">{p.alcoholUse || "None"}</p>
+                    <span className="font-semibold text-muted-foreground">
+                      Alcohol Consumption:
+                    </span>
+                    <p className="font-medium text-foreground capitalize">
+                      {p.alcoholUse || "None"}
+                    </p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border/50">
                   <div className="space-y-1">
-                    <span className="font-semibold text-muted-foreground">Known Allergies:</span>
-                    <p className={p.allergies ? "font-bold text-destructive" : "font-medium text-foreground"}>
+                    <span className="font-semibold text-muted-foreground">
+                      Known Allergies:
+                    </span>
+                    <p
+                      className={
+                        p.allergies
+                          ? "font-bold text-destructive"
+                          : "font-medium text-foreground"
+                      }
+                    >
                       {p.allergies || "None reported (NKDA)"}
                     </p>
                   </div>
                   <div className="space-y-1">
-                    <span className="font-semibold text-muted-foreground">Diabetes Status:</span>
-                    <p className="font-medium text-foreground">{p.diabetes || "None"}</p>
+                    <span className="font-semibold text-muted-foreground">
+                      Diabetes Status:
+                    </span>
+                    <p className="font-medium text-foreground">
+                      {p.diabetes || "None"}
+                    </p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border/50">
                   <div className="space-y-1">
-                    <span className="font-semibold text-muted-foreground">Bleeding / Anticoagulants:</span>
-                    <p className="font-medium text-foreground">{p.bleedingDisorder || "None"}</p>
+                    <span className="font-semibold text-muted-foreground">
+                      Bleeding / Anticoagulants:
+                    </span>
+                    <p className="font-medium text-foreground">
+                      {p.bleedingDisorder || "None"}
+                    </p>
                   </div>
                   <div className="space-y-1">
-                    <span className="font-semibold text-muted-foreground">Cardiovascular Health:</span>
-                    <p className="font-medium text-foreground">{p.cardiovascular || "Normal"}</p>
+                    <span className="font-semibold text-muted-foreground">
+                      Cardiovascular Health:
+                    </span>
+                    <p className="font-medium text-foreground">
+                      {p.cardiovascular || "Normal"}
+                    </p>
                   </div>
                 </div>
 
-                {(p.currentMedications || p.bruxism || (p.dentalAnxiety && p.dentalAnxiety !== "none")) && (
+                {(p.currentMedications ||
+                  p.bruxism ||
+                  (p.dentalAnxiety && p.dentalAnxiety !== "none")) && (
                   <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border/50">
                     {p.currentMedications && (
                       <div className="space-y-1 col-span-2">
-                        <span className="font-semibold text-muted-foreground">Current Medications:</span>
-                        <p className="font-medium text-foreground">{p.currentMedications}</p>
+                        <span className="font-semibold text-muted-foreground">
+                          Current Medications:
+                        </span>
+                        <p className="font-medium text-foreground">
+                          {p.currentMedications}
+                        </p>
                       </div>
                     )}
                     {p.bruxism && (
                       <div className="space-y-1">
-                        <span className="font-semibold text-muted-foreground">Bruxism (Grinding):</span>
-                        <p className="font-medium text-foreground">Yes (Consider Nightguard)</p>
+                        <span className="font-semibold text-muted-foreground">
+                          Bruxism (Grinding):
+                        </span>
+                        <p className="font-medium text-foreground">
+                          Yes (Consider Nightguard)
+                        </p>
                       </div>
                     )}
                     {p.dentalAnxiety && p.dentalAnxiety !== "none" && (
                       <div className="space-y-1">
-                        <span className="font-semibold text-muted-foreground">Dental Anxiety Level:</span>
-                        <p className="font-medium text-foreground capitalize">{p.dentalAnxiety}</p>
+                        <span className="font-semibold text-muted-foreground">
+                          Dental Anxiety Level:
+                        </span>
+                        <p className="font-medium text-foreground capitalize">
+                          {p.dentalAnxiety}
+                        </p>
                       </div>
                     )}
                   </div>
@@ -620,26 +856,45 @@ export default function PatientDetail({ id }: { id: number }) {
               title="Treatment plans"
               actions={
                 isDentist ? (
-                  <Button size="sm" variant="outline" className="gap-1.5" onClick={() => addPlan.mutate({ patientId: id, title: "New Treatment Plan", diagnosis: null, estimatedCost: 0 })}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    onClick={() =>
+                      addPlan.mutate({
+                        patientId: id,
+                        title: "New Treatment Plan",
+                        diagnosis: null,
+                        estimatedCost: 0,
+                      })
+                    }
+                  >
                     <Plus className="h-3.5 w-3.5" /> New plan
                   </Button>
                 ) : undefined
               }
             >
               {!plans.data?.length ? (
-                <EmptyState title="No treatment plans yet" description="Plans will appear here once created." />
+                <EmptyState
+                  title="No treatment plans yet"
+                  description="Plans will appear here once created."
+                />
               ) : (
                 <ul className="divide-y divide-border/70">
                   {plans.data.map(plan => (
                     <li key={plan.id} className="py-3">
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">{plan.title}</p>
-                          <p className="text-xs text-muted-foreground truncate">{plan.diagnosis || "No diagnosis"}</p>
+                          <p className="text-sm font-medium truncate">
+                            {plan.title}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {plan.diagnosis || "No diagnosis"}
+                          </p>
                         </div>
                         <div className="text-right shrink-0">
                           <p className="text-sm font-semibold">
-                            ${Number(plan.estimatedCost).toLocaleString()}
+                            {formatMoney(Number(plan.estimatedCost))}
                           </p>
                           <StatusBadge status={plan.status} />
                         </div>
@@ -659,17 +914,133 @@ export default function PatientDetail({ id }: { id: number }) {
               ) : (
                 <ul className="divide-y divide-border/70">
                   {insurances.data.map(pi => (
-                    <li key={pi.id} className="py-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">
-                      <span className="font-medium">Policy {pi.policyNumber}</span>
-                      <StatusBadge status={pi.isActive ? "active" : "inactive"} />
+                    <li
+                      key={pi.id}
+                      className="py-3 flex flex-wrap gap-x-6 gap-y-1 text-sm"
+                    >
+                      <span className="font-medium">
+                        Policy {pi.policyNumber}
+                      </span>
+                      <StatusBadge
+                        status={pi.isActive ? "active" : "inactive"}
+                      />
                       <span className="text-muted-foreground text-xs">
-                        Co-pay ${Number(pi.coPay).toFixed(0)} · Deductible ${Number(pi.deductible).toFixed(0)}
+                        Co-pay {formatMoney(Number(pi.coPay))} · Deductible{" "}
+                        {formatMoney(Number(pi.deductible))}
                       </span>
                     </li>
                   ))}
                 </ul>
               )}
             </SectionCard>
+            {canViewBilling ? (
+              <SectionCard
+                title="Payment history"
+                actions={
+                  <Button
+                    asChild
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs"
+                  >
+                    <Link href="/billing">Open billing</Link>
+                  </Button>
+                }
+              >
+                {patientInvoices.isLoading || patientPayments.isLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="rounded-lg border border-border/60 bg-muted/20 p-2.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Invoiced
+                        </p>
+                        <p className="mt-1 text-sm font-bold text-foreground">
+                          {formatMoney(totalInvoiced)}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-2.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Paid
+                        </p>
+                        <p className="mt-1 text-sm font-bold text-emerald-700 dark:text-emerald-300">
+                          {formatMoney(netPaid)}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-2.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Balance
+                        </p>
+                        <p className="mt-1 text-sm font-bold text-amber-700 dark:text-amber-300">
+                          {formatMoney(outstandingBalance)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {!paymentRows.length ? (
+                      <EmptyState
+                        title="No payments recorded"
+                        description="Payments for this patient will appear here after an invoice payment is recorded."
+                      />
+                    ) : (
+                      <ul className="divide-y divide-border/70">
+                        {paymentRows.map(payment => {
+                          const isRefund = payment.type === "refund";
+                          const methodLabel = payment.method
+                            .replaceAll("_", " ")
+                            .replace(/\\b\\w/g, character =>
+                              character.toUpperCase()
+                            );
+
+                          return (
+                            <li
+                              key={payment.id}
+                              className="flex items-center justify-between gap-3 py-3"
+                            >
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className="text-sm font-medium text-foreground">
+                                    Invoice #{payment.invoiceId}
+                                  </p>
+                                  <Badge
+                                    variant={
+                                      isRefund ? "destructive" : "outline"
+                                    }
+                                    className="text-[10px] capitalize"
+                                  >
+                                    {isRefund ? "Refund" : "Payment"}
+                                  </Badge>
+                                </div>
+                                <p className="mt-0.5 text-xs text-muted-foreground">
+                                  {formatDate(payment.paidAt)} · {methodLabel}
+                                  {payment.reference
+                                    ? ` · Ref: ${payment.reference}`
+                                    : ""}
+                                </p>
+                              </div>
+                              <span
+                                className={cn(
+                                  "shrink-0 text-sm font-bold",
+                                  isRefund
+                                    ? "text-destructive"
+                                    : "text-emerald-700 dark:text-emerald-300"
+                                )}
+                              >
+                                {isRefund ? "−" : "+"}
+                                {formatMoney(Number(payment.amount))}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </SectionCard>
+            ) : null}
           </div>
         </TabsContent>
 
@@ -722,60 +1093,61 @@ export default function PatientDetail({ id }: { id: number }) {
               isDentist={isDentist}
             />
           </SectionCard>
-            <SectionCard
-              title="Treatment plans"
-              actions={
-                isDentist ? (
-                  <Button
-                    size="sm"
-                    className="gap-1.5"
-                    onClick={() => {
-                      setNewPlanTitle("");
-                      setNewPlanDiagnosis("");
-                      setNewPlanProcedures([]);
-                      setNewPlanDialogOpen(true);
-                    }}
-                  >
-                    <Plus className="h-3.5 w-3.5" /> New Treatment Plan
-                  </Button>
-                ) : undefined
-              }
-            >
-              {!plans.data?.length ? (
-                <div className="py-8 text-center">
-                  <EmptyState
-                    title="No treatment plans yet"
-                    description="Create a phased treatment plan with ADA/CDT procedure codes."
+          <SectionCard
+            title="Treatment plans"
+            actions={
+              isDentist ? (
+                <Button
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => {
+                    setNewPlanTitle("");
+                    setNewPlanDiagnosis("");
+                    setNewPlanProcedures([]);
+                    setNewPlanDialogOpen(true);
+                  }}
+                >
+                  <Plus className="h-3.5 w-3.5" /> New Treatment Plan
+                </Button>
+              ) : undefined
+            }
+          >
+            {!plans.data?.length ? (
+              <div className="py-8 text-center">
+                <EmptyState
+                  title="No treatment plans yet"
+                  description="Create a phased treatment plan with ADA/CDT procedure codes."
+                />
+                {isDentist && (
+                  <div className="mt-3">
+                    <Button
+                      size="sm"
+                      className="gap-1.5"
+                      onClick={() => {
+                        setNewPlanTitle("");
+                        setNewPlanDiagnosis("");
+                        setNewPlanProcedures([]);
+                        setNewPlanDialogOpen(true);
+                      }}
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Create First Treatment
+                      Plan
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {plans.data.map(plan => (
+                  <TreatmentPlanCard
+                    key={plan.id}
+                    plan={plan}
+                    isDentist={isDentist}
                   />
-                  {isDentist && (
-                    <div className="mt-3">
-                      <Button
-                        size="sm"
-                        className="gap-1.5"
-                        onClick={() => {
-                          setNewPlanTitle("");
-                          setNewPlanDiagnosis("");
-                          setNewPlanProcedures([]);
-                          setNewPlanDialogOpen(true);
-                        }}
-                      >
-                        <Plus className="h-3.5 w-3.5" /> Create First Treatment Plan
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {plans.data.map(plan => (
-                    <TreatmentPlanCard
-                      key={plan.id}
-                      plan={plan}
-                      isDentist={isDentist}
-                    />
-                  ))}
-                </div>
-              )}
-            </SectionCard>
+                ))}
+              </div>
+            )}
+          </SectionCard>
         </TabsContent>
 
         <TabsContent value="notes">
@@ -783,23 +1155,39 @@ export default function PatientDetail({ id }: { id: number }) {
             title="Clinical notes"
             actions={
               isDentist ? (
-                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setNoteDialogOpen(true)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  onClick={() => setNoteDialogOpen(true)}
+                >
                   <ScrollText className="h-4 w-4" /> Add note
                 </Button>
               ) : undefined
             }
           >
             {!notes.data?.length ? (
-              <EmptyState title="No clinical notes yet" description="Notes recorded after visits will appear here." />
+              <EmptyState
+                title="No clinical notes yet"
+                description="Notes recorded after visits will appear here."
+              />
             ) : (
               <ul className="divide-y divide-border/70">
                 {notes.data.map(n => (
                   <li key={n.id} className="py-3.5">
                     <div className="flex items-center justify-between gap-2 mb-1">
-                      <p className="text-sm font-semibold">{n.title || "Note"}</p>
-                      <span className="text-xs text-muted-foreground">{formatDate(n.noteDate)}</span>
+                      <p className="text-sm font-semibold">
+                        {n.title || "Note"}
+                      </p>
+                      <span className="text-xs text-muted-foreground">
+                        {formatDate(n.noteDate)}
+                      </span>
                     </div>
-                    {n.content ? <p className="text-sm text-muted-foreground whitespace-pre-wrap">{n.content}</p> : null}
+                    {n.content ? (
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                        {n.content}
+                      </p>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -825,8 +1213,12 @@ export default function PatientDetail({ id }: { id: number }) {
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>
-              {bulkGroup ? `${bulkGroup.length} teeth selected` : `Tooth ${selectedTooth}`}
-              {activeSurface ? ` — ${activeSurface} surface` : " — record condition"}
+              {bulkGroup
+                ? `${bulkGroup.length} teeth selected`
+                : `Tooth ${selectedTooth}`}
+              {activeSurface
+                ? ` — ${activeSurface} surface`
+                : " — record condition"}
             </DialogTitle>
           </DialogHeader>
           <form
@@ -868,7 +1260,11 @@ export default function PatientDetail({ id }: { id: number }) {
           >
             {bulkGroup && !activeSurface && (
               <p className="rounded-md bg-muted/60 px-2 py-1 text-xs text-muted-foreground">
-                Applying to {bulkGroup.length} teeth ({bulkGroup[0]}{bulkGroup.length > 1 ? `…${bulkGroup[bulkGroup.length - 1]}` : ""})
+                Applying to {bulkGroup.length} teeth ({bulkGroup[0]}
+                {bulkGroup.length > 1
+                  ? `…${bulkGroup[bulkGroup.length - 1]}`
+                  : ""}
+                )
               </p>
             )}
             {!activeSurface && !bulkGroup && (
@@ -880,7 +1276,9 @@ export default function PatientDetail({ id }: { id: number }) {
                     onClick={() => setDialogMode(m)}
                     className={cn(
                       "rounded-md px-3 py-1 text-xs font-medium transition-colors",
-                      dialogMode === m ? "bg-card text-foreground shadow-sm" : "text-muted-foreground",
+                      dialogMode === m
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground"
                     )}
                   >
                     {m === "status" ? "Current (status)" : "Planned (plan)"}
@@ -890,14 +1288,21 @@ export default function PatientDetail({ id }: { id: number }) {
             )}
             {activeSurface ? (
               <p className="text-xs text-muted-foreground">
-                Marking the <span className="font-medium text-foreground">{activeSurface}</span> surface of tooth {selectedTooth}.
-                Choose <span className="font-medium">decay</span>, <span className="font-medium">filling</span>, or
+                Marking the{" "}
+                <span className="font-medium text-foreground">
+                  {activeSurface}
+                </span>{" "}
+                surface of tooth {selectedTooth}. Choose{" "}
+                <span className="font-medium">decay</span>,{" "}
+                <span className="font-medium">filling</span>, or
                 <span className="font-medium"> healthy</span> (to clear).
               </p>
             ) : null}
             <div className="grid gap-1.5">
               <div className="flex items-center justify-between">
-                <Label>{activeSurface ? "Surface condition" : "Condition"}</Label>
+                <Label>
+                  {activeSurface ? "Surface condition" : "Condition"}
+                </Label>
                 <button
                   type="button"
                   onClick={() => setToothCdtPickerOpen(true)}
@@ -925,10 +1330,28 @@ export default function PatientDetail({ id }: { id: number }) {
             </div>
             <div className="grid gap-1.5">
               <Label>Comment / CDT Code (optional)</Label>
-              <Input value={toothNote} onChange={e => setToothNote(e.target.value)} placeholder="e.g. [D2391] Resin Composite - 1 Surface" />
+              <Input
+                value={toothNote}
+                onChange={e => setToothNote(e.target.value)}
+                placeholder="e.g. [D2391] Resin Composite - 1 Surface"
+              />
             </div>
-            <Button type="submit" disabled={setTooth.isPending || setSurface.isPending || setToothBulk.isPending} className="gap-1.5">
-              {setTooth.isPending || setSurface.isPending || setToothBulk.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardPlus className="h-4 w-4" />}
+            <Button
+              type="submit"
+              disabled={
+                setTooth.isPending ||
+                setSurface.isPending ||
+                setToothBulk.isPending
+              }
+              className="gap-1.5"
+            >
+              {setTooth.isPending ||
+              setSurface.isPending ||
+              setToothBulk.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ClipboardPlus className="h-4 w-4" />
+              )}
               Save condition
             </Button>
           </form>
@@ -940,11 +1363,15 @@ export default function PatientDetail({ id }: { id: number }) {
         open={perioDialogOpen}
         onOpenChange={setPerioDialogOpen}
         toothNumber={perioSelected ?? ""}
-        existing={perioSelected ? perioMap[perioSelected] ?? null : null}
+        existing={perioSelected ? (perioMap[perioSelected] ?? null) : null}
         saving={setPerio.isPending}
         onSave={data => {
           if (!perioSelected) return;
-          setPerio.mutate({ patientId: id, toothNumber: perioSelected, ...data });
+          setPerio.mutate({
+            patientId: id,
+            toothNumber: perioSelected,
+            ...data,
+          });
         }}
       />
 
@@ -970,14 +1397,30 @@ export default function PatientDetail({ id }: { id: number }) {
           >
             <div className="grid gap-1.5">
               <Label>Title</Label>
-              <Input value={noteTitle} onChange={e => setNoteTitle(e.target.value)} placeholder="e.g. Post-extraction check" />
+              <Input
+                value={noteTitle}
+                onChange={e => setNoteTitle(e.target.value)}
+                placeholder="e.g. Post-extraction check"
+              />
             </div>
             <div className="grid gap-1.5">
               <Label>Content</Label>
-              <Textarea rows={5} value={noteContent} onChange={e => setNoteContent(e.target.value)} />
+              <Textarea
+                rows={5}
+                value={noteContent}
+                onChange={e => setNoteContent(e.target.value)}
+              />
             </div>
-            <Button type="submit" disabled={addNote.isPending} className="gap-1.5">
-              {addNote.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pencil className="h-4 w-4" />}
+            <Button
+              type="submit"
+              disabled={addNote.isPending}
+              className="gap-1.5"
+            >
+              {addNote.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Pencil className="h-4 w-4" />
+              )}
               Save note
             </Button>
           </form>
@@ -993,7 +1436,10 @@ export default function PatientDetail({ id }: { id: number }) {
               Create Treatment Plan
             </DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleCreatePlanWithProcedures} className="grid gap-4 overflow-y-auto pr-1">
+          <form
+            onSubmit={handleCreatePlanWithProcedures}
+            className="grid gap-4 overflow-y-auto pr-1"
+          >
             <div className="grid gap-1.5">
               <Label>Plan Title *</Label>
               <Input
@@ -1031,7 +1477,8 @@ export default function PatientDetail({ id }: { id: number }) {
 
               {newPlanProcedures.length === 0 ? (
                 <div className="p-4 rounded-lg border border-dashed text-center text-xs text-muted-foreground bg-muted/20">
-                  No procedures added yet. Click &quot;Add CDT Procedure&quot; to build an itemized estimate.
+                  No procedures added yet. Click &quot;Add CDT Procedure&quot;
+                  to build an itemized estimate.
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -1053,13 +1500,19 @@ export default function PatientDetail({ id }: { id: number }) {
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <span className="font-bold text-foreground">${proc.cost.toFixed(2)}</span>
+                        <span className="font-bold text-foreground">
+                          {formatMoney(proc.cost)}
+                        </span>
                         <Button
                           type="button"
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          onClick={() => setNewPlanProcedures(newPlanProcedures.filter((_, i) => i !== idx))}
+                          onClick={() =>
+                            setNewPlanProcedures(
+                              newPlanProcedures.filter((_, i) => i !== idx)
+                            )
+                          }
                         >
                           <MinusCircle className="h-3.5 w-3.5" />
                         </Button>
@@ -1071,14 +1524,26 @@ export default function PatientDetail({ id }: { id: number }) {
             </div>
 
             <div className="p-3 rounded-lg bg-primary/5 border border-primary/20 flex items-center justify-between">
-              <span className="text-xs font-medium text-foreground">Estimated Total Cost:</span>
+              <span className="text-xs font-medium text-foreground">
+                Estimated Total Cost:
+              </span>
               <span className="text-base font-bold text-primary">
-                ${newPlanProcedures.reduce((acc, p) => acc + p.cost, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                {formatMoney(
+                  newPlanProcedures.reduce((acc, p) => acc + p.cost, 0)
+                )}
               </span>
             </div>
 
-            <Button type="submit" disabled={addPlan.isPending} className="gap-1.5 mt-2">
-              {addPlan.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            <Button
+              type="submit"
+              disabled={addPlan.isPending}
+              className="gap-1.5 mt-2"
+            >
+              {addPlan.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
               Save Treatment Plan
             </Button>
           </form>
@@ -1096,7 +1561,7 @@ export default function PatientDetail({ id }: { id: number }) {
               toothNumber: selectedTooth || "",
               code: code.code,
               name: code.name,
-              cost: code.defaultFee,
+              cost: getPhilippineCDTFee(code.code, code.defaultFee),
               description: code.description,
             },
           ]);
@@ -1110,13 +1575,20 @@ export default function PatientDetail({ id }: { id: number }) {
         onOpenChange={setToothCdtPickerOpen}
         onSelectCode={code => {
           let cond = "healthy";
-          if (code.code.startsWith("D21") || code.code.startsWith("D23")) cond = "filling";
+          if (code.code.startsWith("D21") || code.code.startsWith("D23"))
+            cond = "filling";
           else if (code.code.startsWith("D27")) cond = "crown";
           else if (code.code.startsWith("D33")) cond = "root_canal";
           else if (code.code.startsWith("D60")) cond = "implant";
-          else if (code.code.startsWith("D71") || code.code.startsWith("D72")) cond = "extraction";
+          else if (code.code.startsWith("D71") || code.code.startsWith("D72"))
+            cond = "extraction";
           else if (code.code.startsWith("D296")) cond = "veneers";
-          else if (code.code.startsWith("D5") || code.code.startsWith("D62") || code.code.startsWith("D67")) cond = "bridge";
+          else if (
+            code.code.startsWith("D5") ||
+            code.code.startsWith("D62") ||
+            code.code.startsWith("D67")
+          )
+            cond = "bridge";
           setToothCondition(cond);
           setToothNote(`[${code.code}] ${code.name}`);
         }}
@@ -1146,7 +1618,9 @@ function Info({
 }) {
   return (
     <div className={className}>
-      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
       <p className="text-sm font-medium text-foreground break-words">
         {value || "—"}
       </p>

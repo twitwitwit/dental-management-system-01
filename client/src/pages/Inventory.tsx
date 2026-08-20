@@ -59,7 +59,7 @@ export default function Inventory() {
 
   const create = trpc.inventory.create.useMutation({
     onSuccess: () => {
-      toast.success("Inventory item added");
+      toast.success("Stock item added");
       setDialogOpen(false);
       setForm({ name: "", category: "", sku: "", quantity: "", unit: "pcs", threshold: "", unitCost: "", supplier: "" });
       utils.inventory.items.invalidate();
@@ -93,7 +93,7 @@ export default function Inventory() {
     <DashboardLayout>
       <PageHeader
         title="Inventory"
-        description="Supplies, materials, and stock levels."
+        description="Track supplies, reorder points, and stock movements."
         actions={
           canManage ? (
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -102,7 +102,7 @@ export default function Inventory() {
               </Button>
               <DialogContent className="max-w-md">
                 <DialogHeader>
-                  <DialogTitle>Add Inventory Item</DialogTitle>
+                  <DialogTitle>Add a stock item</DialogTitle>
                 </DialogHeader>
                 <form
                   className="grid gap-3.5"
@@ -150,7 +150,7 @@ export default function Inventory() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="grid gap-1.5">
-                      <Label>Unit cost ($)</Label>
+                      <Label>Unit cost (₱)</Label>
                       <Input type="number" min={0} step="0.01" value={form.unitCost} onChange={e => setForm({ ...form, unitCost: e.target.value })} />
                     </div>
                     <div className="grid gap-1.5">
@@ -215,13 +215,13 @@ export default function Inventory() {
         </div>
       )}
 
-      <SectionCard title="Stock levels">
+      <SectionCard title="Current stock">
         {items.isLoading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
           </div>
         ) : !items.data?.length ? (
-          <EmptyState title="No inventory items yet" description="Add supplies and materials to track stock." />
+          <EmptyState title="No stock items recorded" description="Add supplies and materials to start tracking stock." />
         ) : (
           <Table>
             <TableHeader>
@@ -287,7 +287,7 @@ export default function Inventory() {
       <div className="mt-6">
         <SectionCard title="Recent stock movements">
           {!movements.data?.length ? (
-            <EmptyState title="No stock movements recorded yet" />
+            <EmptyState title="No stock movements recorded" />
           ) : (
             <Table>
               <TableHeader>

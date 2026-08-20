@@ -22,7 +22,7 @@ export const users = mysqlTable("users", {
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
   passwordHash: varchar("passwordHash", { length: 128 }),
-  role: mysqlEnum("role", ["admin", "dentist", "receptionist", "staff"])
+  role: mysqlEnum("role", ["admin", "dentist", "receptionist", "staff", "patient"])
     .default("staff")
     .notNull(),
   isActive: boolean("isActive").default(true).notNull(),
@@ -367,3 +367,140 @@ export type InsertInsuranceClaim = typeof insuranceClaims.$inferInsert;
 
 // Type helpers
 export type UserWithRole = User;
+
+// Add this table to drizzle/schema.ts.
+// Import: int, mysqlEnum, mysqlTable, text, timestamp, varchar
+
+export const auditLogs = mysqlTable("auditLogs", {
+  id: int("id").autoincrement().primaryKey(),
+  actorUserId: int("actorUserId"),
+  actorRole: mysqlEnum("actorRole", ["admin", "dentist", "receptionist", "staff"]),
+  action: varchar("action", { length: 32 }).notNull(),
+  resourceType: varchar("resourceType", { length: 64 }).notNull(),
+  resourceId: varchar("resourceId", { length: 64 }),
+  purpose: varchar("purpose", { length: 500 }),
+  outcome: mysqlEnum("outcome", ["success", "denied", "error"]).notNull().default("success"),
+  metadata: text("metadata"),
+  ipAddress: varchar("ipAddress", { length: 64 }),
+  userAgent: text("userAgent"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type AuditLog = typeof auditLogs.$inferSelect;
+export type InsertAuditLog = typeof auditLogs.$inferInsert;
+
+/*
+  Migration SQL. Generate a normal Drizzle migration from schema.ts in your
+  project; these statements show the intended table and append-only triggers.
+*/
+
+/*
+CREATE TABLE `auditLogs` (
+  `id` int AUTO_INCREMENT NOT NULL,
+  `actorUserId` int,
+  `actorRole` enum('admin','dentist','receptionist','staff'),
+  `action` varchar(32) NOT NULL,
+  `resourceType` varchar(64) NOT NULL,
+  `resourceId` varchar(64),
+  `purpose` varchar(500),
+  `outcome` enum('success','denied','error') NOT NULL DEFAULT 'success',
+  `metadata` text,
+  `ipAddress` varchar(64),
+  `userAgent` text,
+  `createdAt` timestamp NOT NULL DEFAULT (now()),
+  CONSTRAINT `auditLogs_id` PRIMARY KEY(`id`)
+);
+
+DELIMITER $$
+CREATE TRIGGER `auditLogs_no_update`
+BEFORE UPDATE ON `auditLogs`
+FOR EACH ROW
+BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'auditLogs is append-only';
+END$$
+
+CREATE TRIGGER `auditLogs_no_delete`
+BEFORE DELETE ON `auditLogs`
+FOR EACH ROW
+BEGIN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'auditLogs is append-only';
+END$$
+DELIMITER ;
+*/
+
+/*
+After importing the migration, grant the application account INSERT and SELECT
+on auditLogs, but do not grant UPDATE or DELETE. The trigger provides a second
+application-level safeguard; the database account privileges remain the real
+security boundary.
+*/
+
+export const auditLogMigrationSql = `
+CREATE TABLE auditLogs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  actorUserId INT NULL,
+  actorRole ENUM('admin','dentist','receptionist','staff') NULL,
+  action VARCHAR(32) NOT NULL,
+  resourceType VARCHAR(64) NOT NULL,
+  resourceId VARCHAR(64) NULL,
+  purpose VARCHAR(500) NULL,
+  outcome ENUM('success','denied','error') NOT NULL DEFAULT 'success',
+  metadata TEXT NULL,
+  ipAddress VARCHAR(64) NULL,
+  userAgent TEXT NULL,
+  createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+`;
+
+/*
+Important: do not expose update/delete tRPC procedures for this table. For a
+stronger deployment, run the trigger statements and grant only SELECT/INSERT.
+*/
+
+export default auditLogs;
+
+export const patientAccounts = mysqlTable("patientAccounts", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().unique(),
+  patientId: int("patientId").notNull().unique(),
+  verificationStatus: mysqlEnum("verificationStatus", ["pending", "verified", "rejected", "suspended"])
+    .default("pending")
+    .notNull(),
+  verificationNote: text("verificationNote"),
+  verifiedAt: timestamp("verifiedAt"),
+  verifiedByUserId: int("verifiedByUserId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type PatientAccount = typeof patientAccounts.$inferSelect;
+export type InsertPatientAccount = typeof patientAccounts.$inferInsert;
+
+/**
+ * Metadata for profile photos, X-rays, consent files, and other clinical
+ * documents stored through the existing storage.ts helpers.
+ * The storage key is kept private; patients receive a short-lived signed URL
+ * only after the server verifies ownership and visibility.
+ */
+export const patientDocuments = mysqlTable("patientDocuments", {
+  id: int("id").autoincrement().primaryKey(),
+  patientId: int("patientId").notNull(),
+  uploadedByUserId: int("uploadedByUserId"),
+  documentType: mysqlEnum("documentType", [
+    "profile_photo",
+    "xray",
+    "clinical_document",
+    "consent_form",
+    "other",
+  ]).notNull(),
+  title: varchar("title", { length: 256 }).notNull(),
+  storageKey: varchar("storageKey", { length: 512 }).notNull().unique(),
+  contentType: varchar("contentType", { length: 128 }).notNull(),
+  fileSize: int("fileSize"),
+  visibleToPatient: boolean("visibleToPatient").default(false).notNull(),
+  uploadedAt: timestamp("uploadedAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type PatientDocument = typeof patientDocuments.$inferSelect;
+export type InsertPatientDocument = typeof patientDocuments.$inferInsert;

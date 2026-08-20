@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
 import { useCurrentRole } from "@/lib/roles";
-import { formatDateTime, toDateStr } from "@/lib/format";
+import { formatDate, formatStatusLabel, formatTime, toDateStr } from "@/lib/format";
 import { EmptyState, PageHeader, SectionCard, StatusBadge } from "@/components/dental";
 import {
   CalendarPlus,
@@ -89,7 +89,7 @@ export default function Appointments() {
 
   const monthTitle = useMemo(() => {
     const [y, m] = monthKey.split("-").map(Number);
-    return new Date(y, m - 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    return new Date(y, m - 1).toLocaleDateString("en-PH", { month: "long", year: "numeric" });
   }, [monthKey]);
 
   const patientById = useMemo(() => {
@@ -134,7 +134,7 @@ export default function Appointments() {
     <DashboardLayout>
       <PageHeader
         title="Appointments"
-        description="Schedule, reschedule, and track appointments."
+        description="Book visits, update status, and keep the daily schedule accurate."
         actions={
           canManage ? (
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -143,7 +143,7 @@ export default function Appointments() {
               </Button>
               <DialogContent className="max-w-md">
                 <DialogHeader>
-                  <DialogTitle>Schedule Appointment</DialogTitle>
+                  <DialogTitle>Schedule a visit</DialogTitle>
                 </DialogHeader>
                 <form
                   className="grid gap-3.5"
@@ -187,8 +187,8 @@ export default function Appointments() {
                       <Input type="date" value={appointmentDate} onChange={e => setAppointmentDate(e.target.value)} />
                     </div>
                     <div className="grid gap-1.5">
-                      <Label>Type</Label>
-                      <Input value={type} onChange={e => setType(e.target.value)} placeholder="e.g. checkup" />
+                      <Label>Visit type</Label>
+                      <Input value={type} onChange={e => setType(e.target.value)} placeholder="e.g. consultation, cleaning" />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -207,7 +207,7 @@ export default function Appointments() {
                   </div>
                   <Button type="submit" disabled={create.isPending} className="gap-1.5">
                     {create.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />}
-                    Schedule
+                    Save appointment
                   </Button>
                 </form>
               </DialogContent>
@@ -239,7 +239,7 @@ export default function Appointments() {
             <SelectItem value="all">All statuses</SelectItem>
             {STATUSES.map(s => (
               <SelectItem key={s} value={s}>
-                {s.replaceAll("_", " ")}
+                {formatStatusLabel(s)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -254,8 +254,8 @@ export default function Appointments() {
             </div>
           ) : !appointments.data?.length ? (
             <EmptyState
-              title="No appointments this month"
-              description="Create a new appointment to get started."
+              title="No visits scheduled this month"
+              description="There are no visits in the selected month."
               action={
                 canManage ? (
                   <Button variant="outline" className="gap-1.5" onClick={() => setDialogOpen(true)}>
@@ -275,7 +275,7 @@ export default function Appointments() {
                         {patient ? `${patient.firstName} ${patient.lastName}` : `Patient #${a.patientId}`}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {formatDateTime(a.appointmentDate)} · {a.startTime}–{a.endTime}
+                        {formatDate(a.appointmentDate)} · {formatTime(a.startTime)}–{formatTime(a.endTime)}
                         {a.type ? ` · ${a.type}` : ""}
                       </p>
                       {a.notes ? <p className="text-xs text-muted-foreground mt-0.5 max-w-xl truncate">{a.notes}</p> : null}
@@ -298,7 +298,7 @@ export default function Appointments() {
                           <SelectContent>
                             {STATUSES.map(s => (
                               <SelectItem key={s} value={s}>
-                                {s.replaceAll("_", " ")}
+                                {formatStatusLabel(s)}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -320,7 +320,7 @@ export default function Appointments() {
                           <SelectContent>
                             {STATUSES.map(s => (
                               <SelectItem key={s} value={s}>
-                                {s.replaceAll("_", " ")}
+                                {formatStatusLabel(s)}
                               </SelectItem>
                             ))}
                           </SelectContent>

@@ -15,7 +15,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { useCurrentRole } from "@/lib/roles";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatMoney } from "@/lib/format";
 import { AdvancedOdontogram } from "@/components/AdvancedOdontogram";
 import { PerioDialog } from "@/components/PerioDialog";
 import { perioSummary, type PerioMap } from "@/components/PerioChart";
@@ -182,7 +182,7 @@ export default function Clinical() {
           });
         }
       }
-      toast.success("Treatment plan created successfully");
+      toast.success("Treatment plan saved");
       setPlanDialog(false);
       setPlanTitle("");
       setPlanDiagnosis("");
@@ -256,7 +256,7 @@ export default function Clinical() {
     <DashboardLayout>
       <PageHeader
         title="Clinical Records"
-        description="Dental charts, periodontal probing, treatment plans, and clinical notes. Dental assistant, dentist, and admin access."
+        description="Maintain dental charts, periodontal findings, treatment plans, and clinical notes."
       />
 
       <div className="grid gap-4 mb-6 xl:grid-cols-[280px_1fr]">
@@ -276,7 +276,7 @@ export default function Clinical() {
           ) : !patients.data?.length ? (
             <EmptyState
               title="No patients"
-              description="Add patients in the Patients module first."
+              description="Register a patient before recording clinical findings."
               action={
                 <Button variant="outline" size="sm" asChild>
                   <Link href="/patients">Patients</Link>
@@ -389,8 +389,8 @@ export default function Clinical() {
               >
                 {!plans.data?.length ? (
                   <EmptyState
-                    title="No treatment plans yet"
-                    description="Create an itemized plan with ADA/CDT procedure codes."
+                    title="No treatment plans recorded"
+                    description="Build an itemized plan with CDT procedure codes and estimated fees."
                   />
                 ) : (
                   <div className="space-y-3">
@@ -625,7 +625,7 @@ export default function Clinical() {
 
               {planProcedures.length === 0 ? (
                 <div className="p-4 rounded-lg border border-dashed text-center text-xs text-muted-foreground bg-muted/20">
-                  No procedures added yet. Click &quot;Add CDT Procedure&quot; to build an itemized estimate.
+                  No procedures added. Add CDT procedures to build the estimate.
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -647,7 +647,7 @@ export default function Clinical() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <span className="font-bold text-foreground">${proc.cost.toFixed(2)}</span>
+                        <span className="font-bold text-foreground">{formatMoney(proc.cost)}</span>
                         <Button
                           type="button"
                           variant="ghost"
@@ -665,15 +665,15 @@ export default function Clinical() {
             </div>
 
             <div className="p-3 rounded-lg bg-primary/5 border border-primary/20 flex items-center justify-between">
-              <span className="text-xs font-medium text-foreground">Estimated Total Cost:</span>
+              <span className="text-xs font-medium text-foreground">Estimated total:</span>
               <span className="text-base font-bold text-primary">
-                ${(planProcedures.reduce((acc, p) => acc + p.cost, 0) || Number(planCost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                {formatMoney(planProcedures.reduce((acc, p) => acc + p.cost, 0) || Number(planCost) || 0)}
               </span>
             </div>
 
             <Button type="submit" disabled={addPlan.isPending || !planTitle.trim()} className="gap-1.5 mt-2">
               {addPlan.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pencil className="h-4 w-4" />}
-              Create Plan
+              Save treatment plan
             </Button>
           </form>
         </DialogContent>

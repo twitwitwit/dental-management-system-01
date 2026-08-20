@@ -50,6 +50,13 @@
       "when": 1787156775192,
       "tag": "0006_quick_spyke",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1787194664197,
+      "tag": "0007_thick_devos",
+      "breakpoints": true
     }
   ]
 }

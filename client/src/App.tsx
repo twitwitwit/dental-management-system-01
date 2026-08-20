@@ -17,7 +17,12 @@ import Users from "./pages/Users";
 import SettingsPage from "./pages/SettingsPage";
 import AccessDenied from "./pages/AccessDenied";
 import { useCurrentRole, canAccess } from "./lib/roles";
-
+import AuditLogs from "./pages/AuditLogs";
+import { useAuth } from "./_core/hooks/useAuth";
+import PatientRegistration from "./pages/PatientRegistration";
+import PatientLogin from "./pages/PatientLogin";
+import PatientPortal from "./pages/PatientPortal";
+import PatientVerification from "./pages/PatientVerification";
 function useModuleGate(moduleId: string) {
   const role = useCurrentRole();
   return { canAccessCheck: canAccess(role, moduleId) };
@@ -51,23 +56,62 @@ function ModuleGate({
   return <>{children()}</>;
 }
 
+function RoleHome() {
+  const { user, loading } = useAuth();
+
+  // Do not render Dashboard while auth is still loading. Otherwise a patient
+  // can briefly be evaluated against the staff dashboard module.
+  if (loading) return null;
+  if (user?.role === "patient") return <PatientPortal />;
+  return <Dashboard />;
+}
+
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Dashboard} />
+      <Route path="/" component={RoleHome} />
       <Route path="/dashboard" component={Dashboard} />
       <ModuleRoute path="/patients" moduleId="patients" component={Patients} />
       <Route path="/patients/:id">
-        {params => <ModuleGate moduleId="patients">{() => <PatientDetail id={Number(params.id)} />}</ModuleGate>}
+        {params => (
+          <ModuleGate moduleId="patients">
+            {() => <PatientDetail id={Number(params.id)} />}
+          </ModuleGate>
+        )}
       </Route>
-      <ModuleRoute path="/appointments" moduleId="appointments" component={Appointments} />
+      <Route path="/patient/register" component={PatientRegistration} />
+      <Route path="/patient/login" component={PatientLogin} />
+      <Route path="/patient" component={PatientPortal} />
+      <ModuleRoute
+        path="/patient-verification"
+        moduleId="users"
+        component={PatientVerification}
+      />
+      <ModuleRoute
+        path="/appointments"
+        moduleId="appointments"
+        component={Appointments}
+      />
       <ModuleRoute path="/clinical" moduleId="clinical" component={Clinical} />
       <ModuleRoute path="/billing" moduleId="billing" component={Billing} />
-      <ModuleRoute path="/inventory" moduleId="inventory" component={Inventory} />
-      <ModuleRoute path="/insurance" moduleId="insurance" component={Insurance} />
+      <ModuleRoute
+        path="/inventory"
+        moduleId="inventory"
+        component={Inventory}
+      />
+      <ModuleRoute
+        path="/insurance"
+        moduleId="insurance"
+        component={Insurance}
+      />
       <ModuleRoute path="/reports" moduleId="reports" component={Reports} />
       <ModuleRoute path="/users" moduleId="users" component={Users} />
-      <ModuleRoute path="/settings" moduleId="settings" component={SettingsPage} />
+      <ModuleRoute path="/audit" moduleId="audit" component={AuditLogs} />
+      <ModuleRoute
+        path="/settings"
+        moduleId="settings"
+        component={SettingsPage}
+      />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

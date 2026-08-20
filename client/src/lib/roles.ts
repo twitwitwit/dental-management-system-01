@@ -4,6 +4,7 @@ import {
   ClipboardList,
   HandCoins,
   LayoutDashboard,
+  ScrollText,
   Settings,
   ShieldCheck,
   Stethoscope,
@@ -11,7 +12,8 @@ import {
   Waypoints,
 } from "lucide-react";
 
-export type Role = "admin" | "dentist" | "receptionist" | "staff";
+
+export type Role = "admin" | "dentist" | "receptionist" | "staff" | "patient";
 
 export type RoleModule =
   | "dashboard"
@@ -23,13 +25,16 @@ export type RoleModule =
   | "insurance"
   | "reports"
   | "users"
-  | "settings";
+  | "audit"
+  | "settings"
+  | "patientPortal";
 
 export const ROLE_LABELS: Record<Role, string> = {
   admin: "Administrator",
   dentist: "Dentist",
   receptionist: "Receptionist",
   staff: "Staff",
+  patient: "Patient",
 };
 
 /**
@@ -47,6 +52,7 @@ export const ROLE_SCOPES: Record<Role, RoleModule[]> = {
     "insurance",
     "reports",
     "users",
+    "audit",
     "settings",
   ],
   dentist: [
@@ -61,7 +67,12 @@ export const ROLE_SCOPES: Record<Role, RoleModule[]> = {
   ],
   receptionist: ["dashboard", "patients", "appointments", "billing", "insurance"],
   staff: ["dashboard", "appointments", "inventory"],
+  patient: ["patientPortal"],
 };
+
+export const PATIENT_PORTAL_NAV_ITEMS = [
+  { id: "patientPortal" as const, label: "My Portal", path: "/patient", icon: LayoutDashboard },
+];
 
 export interface NavItem {
   id: RoleModule;
@@ -80,6 +91,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: "insurance", label: "Insurance", path: "/insurance", icon: ShieldCheck },
   { id: "reports", label: "Reports", path: "/reports", icon: ClipboardList },
   { id: "users", label: "Staff Management", path: "/users", icon: Users },
+  { id: "audit", label: "Audit Logs", path: "/audit", icon: ScrollText },
   { id: "settings", label: "Clinic Settings", path: "/settings", icon: Settings },
 ];
 
