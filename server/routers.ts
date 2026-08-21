@@ -41,10 +41,10 @@ function requirePatient(ctx: PatientPortalContext) {
 async function requireVerifiedPatient(ctx: PatientPortalContext) {
   const user = requirePatient(ctx);
   const portal = await db.getPatientPortalByUserId(user.id);
-  if (!portal || portal.account.verificationStatus !== "verified") {
+  if (!portal || portal.user.isActive === false) {
     throw new TRPCError({
       code: "FORBIDDEN",
-      message: "Your patient account is not verified yet",
+      message: "Your patient portal account is inactive",
     });
   }
   return portal;
@@ -111,7 +111,7 @@ const documentContentTypes = new Set([
 ]);
 
 export const patientPortalRouter = router({
-  /** Public self-registration creates a pending, inactive local patient account. */
+  /** Public self-registration creates an active patient portal account. */
   register: publicProcedure
     .input(patientRegistrationInput)
     .mutation(async ({ ctx, input }) => {
@@ -138,7 +138,7 @@ export const patientPortalRouter = router({
             resourceId: String(created.patientAccountId),
             purpose: "Patient self-registration",
             outcome: "success",
-            metadata: JSON.stringify({ verificationStatus: "pending" }),
+            metadata: JSON.stringify({ verificationStatus: "verified", automaticActivation: true }),
           });
         } catch (auditError) {
           console.error(
@@ -146,7 +146,7 @@ export const patientPortalRouter = router({
             auditError
           );
         }
-        return { success: true, verificationStatus: "pending" as const };
+        return { success: true, verificationStatus: "verified" as const };
       } catch (error) {
         try {
           await appendAuditLog(ctx, {
@@ -556,6 +556,7 @@ export const patientPortalRouter = router({
         fileSize: data.length,
         visibleToPatient: true,
       });
+      await db.updateUserProfilePhoto(ctx.user!.id, stored.url);
       return { id, url: stored.url };
     }),
 
@@ -1151,20 +1152,8 @@ export const appRouter = router({
           });
         }
 
-        // Patient accounts require explicit administrator verification before login.
-        if (user.role === "patient") {
-          const patientPortal = await db.getPatientAccountByUserId(user.id);
-          if (
-            !patientPortal ||
-            patientPortal.verificationStatus !== "verified"
-          ) {
-            throw new TRPCError({
-              code: "FORBIDDEN",
-              message:
-                "Your patient account is pending verification by the clinic",
-            });
-          }
-        }
+        // Patient self-registration is active immediately. The normal `isActive`
+        // check above still allows the clinic to deactivate an account later.
 
         const token = await sdk.signSession({
           openId: user.openId,
@@ -1348,12 +1337,24 @@ export const appRouter = router({
         return db.listAppointments(input);
       }),
 
-    // Receptionist-owned scheduling. Admin may retain an emergency override,
-    // but dentists and staff cannot create appointments from this procedure.
+    // Scheduling is owned by receptionists. Dentists, staff, and administrators
+    // cannot create appointments from this procedure.
     dentists: protectedProcedure.query(async ({ ctx }) => {
-      requireRoles(ctx, ["admin", "receptionist"]);
+      requireRoles(ctx, ["receptionist"]);
       return db.listAvailableDentists();
     }),
+
+    availableSlots: protectedProcedure
+      .input(
+        z.object({
+          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          dentistId: z.number().int().positive().optional(),
+        }),
+      )
+      .query(async ({ ctx, input }) => {
+        requireRoles(ctx, ["receptionist"]);
+        return db.listAvailableDentistSlots(input.date, input.dentistId);
+      }),
 
     create: protectedProcedure
       .input(
@@ -1371,7 +1372,7 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        requireRoles(ctx, ["admin", "receptionist"]);
+        requireRoles(ctx, ["receptionist"]);
         const id = await db.createAppointment({
           ...input,
           appointmentDate: new Date(`${input.appointmentDate}T00:00:00`),
@@ -1859,7 +1860,7 @@ export const appRouter = router({
           invoiceId: z.number(),
           patientId: z.number(),
           amount: money("amount"),
-          method: z.enum(["cash", "card", "bank_transfer", "insurance"]),
+          method: z.enum(["cash", "card", "bank_transfer", "insurance", "gcash", "maya", "qr_code"]),
           reference: z.string().nullable().optional(),
           type: z.enum(["payment", "refund"]).optional(),
         })

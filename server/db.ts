@@ -127,7 +127,7 @@ export async function createPatientPortalAccount(data: {
       loginMethod: "local_patient",
       passwordHash: data.passwordHash,
       role: "patient",
-      isActive: false,
+      isActive: true,
       phone: data.phone ?? null,
     });
     const userId = Number(userResult[0].insertId);
@@ -135,7 +135,10 @@ export async function createPatientPortalAccount(data: {
     const accountResult = await tx.insert(patientAccounts).values({
       userId,
       patientId,
-      verificationStatus: "pending",
+      verificationStatus: "verified",
+      verificationNote: "Self-registered patient account; no manual verification required.",
+      verifiedAt: new Date(),
+      verifiedByUserId: null,
     });
 
     return {
@@ -265,16 +268,24 @@ export async function listAvailableDentistSlots(date: string, dentistId?: number
       );
 
     // MySQL may return varchar(8) times as HH:MM:SS, while PORTAL_SLOTS use
-    // HH:MM. Normalize both sides before checking occupancy.
-    const occupied = new Set(
-      booked.map(
-        slot =>
-          `${normalizePortalTime(slot.startTime)}-${normalizePortalTime(slot.endTime)}`,
-      ),
-    );
+    // HH:MM. Compare intervals so a longer booking blocks every overlapping
+    // 30-minute slot, not only an exact matching start/end pair.
+    const toMinutes = (value: string) => {
+      const [hours, minutes] = normalizePortalTime(value).split(":").map(Number);
+      return hours * 60 + minutes;
+    };
+    const occupied = booked.map(slot => ({
+      start: toMinutes(slot.startTime),
+      end: toMinutes(slot.endTime),
+    }));
 
     for (const [startTime, endTime] of PORTAL_SLOTS) {
-      if (!occupied.has(`${startTime}-${endTime}`)) {
+      const slotStart = toMinutes(startTime);
+      const slotEnd = toMinutes(endTime);
+      const overlaps = occupied.some(
+        booking => slotStart < booking.end && slotEnd > booking.start,
+      );
+      if (!overlaps) {
         results.push({
           dentistId: dentist.id,
           dentistName: dentist.name ?? "Dentist",
@@ -1840,15 +1851,11 @@ export async function revokePatientPortalInvitation(invitationId: number) {
 }
 
 
-// -----------------------------------------------------------------------------
-// Clinic user profile helpers
-// -----------------------------------------------------------------------------
-
+/** Read the authenticated clinic user's editable profile fields. */
 export async function getUserProfile(userId: number) {
-  const database = await getDb();
-  if (!database) throw new Error("Database not available");
-
-  const rows = await database
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db
     .select({
       id: users.id,
       name: users.name,
@@ -1860,32 +1867,41 @@ export async function getUserProfile(userId: number) {
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
-
-  return rows[0] ?? null;
+  return rows[0];
 }
 
+/** Update only profile fields that a clinic user may edit themselves. */
 export async function updateUserProfile(
   userId: number,
-  data: { name?: string; phone?: string | null },
+  input: { name: string; phone?: string | null },
 ) {
-  const database = await getDb();
-  if (!database) throw new Error("Database not available");
-
-  await database.update(users).set({
-    ...(data.name !== undefined ? { name: data.name } : {}),
-    ...(data.phone !== undefined ? { phone: data.phone } : {}),
-  }).where(eq(users.id, userId));
-
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  await db
+    .update(users)
+    .set({ name: input.name, phone: input.phone ?? null })
+    .where(eq(users.id, userId));
   return getUserProfile(userId);
 }
 
+/** Persist the public URL returned by the configured storage provider. */
 export async function updateUserProfilePhoto(userId: number, profilePhotoUrl: string) {
-  const database = await getDb();
-  if (!database) throw new Error("Database not available");
-
-  await database.update(users)
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  await db
+    .update(users)
     .set({ profilePhotoUrl })
     .where(eq(users.id, userId));
-
   return getUserProfile(userId);
+}
+
+export const getClinicUserProfile = getUserProfile;
+export const updateClinicUserProfile = updateUserProfile;
+export const setUserProfilePhoto = updateUserProfilePhoto;
+
+
+/** Boolean compatibility alias used by the patient portal booking gate. */
+export async function hasCompletedPatientHealthForm(patientId: number) {
+  const status = await getPatientHealthFormStatus(patientId);
+  return Boolean(status.completed);
 }

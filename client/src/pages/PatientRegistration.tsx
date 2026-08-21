@@ -48,11 +48,10 @@ export default function PatientRegistration() {
           </div>
           <h1 className="text-2xl font-semibold">Registration received</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Your account is pending clinic verification. You will be able to sign in after a staff member confirms your registration.
+            Your account is ready. You can sign in immediately and complete your health form before booking an appointment.
           </p>
-          <div className="mt-6 flex justify-center gap-3">
-            <Button variant="outline" onClick={() => setLocation("/patient/login")}>Go to patient login</Button>
-            <Button onClick={() => setLocation("/")}>Clinic staff login</Button>
+          <div className="mt-6 flex justify-center">
+            <Button onClick={() => setLocation("/patient/login")}>Go to patient login</Button>
           </div>
         </section>
       </main>
@@ -68,7 +67,7 @@ export default function PatientRegistration() {
               <UserRound className="h-5 w-5" />
             </div>
             <h1 className="text-2xl font-semibold">Create your patient account</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Use this form for online registration. Clinic staff will verify your details before portal access is enabled.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Create your account to access the patient portal. You can sign in immediately after registration.</p>
           </div>
           <ShieldCheck className="h-5 w-5 text-muted-foreground" />
         </div>

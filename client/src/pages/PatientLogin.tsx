@@ -36,7 +36,7 @@ export default function PatientLogin() {
           {error && <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
           <Button className="w-full" type="submit" disabled={auth.isPending}>{auth.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Sign in</Button>
         </form>
-        <div className="mt-6 flex items-start gap-2 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /><span>New registrations are reviewed by the clinic before access is enabled.</span></div>
+        <div className="mt-6 flex items-start gap-2 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /><span>After registration, you can sign in immediately. Complete your health form before booking an appointment.</span></div>
         <p className="mt-6 text-center text-sm text-muted-foreground">Need an account? <Link href="/patient/register" className="font-medium text-primary hover:underline">Register online</Link></p>
       </section>
     </main>

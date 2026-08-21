@@ -272,7 +272,7 @@ export const payments = mysqlTable("payments", {
   invoiceId: int("invoiceId").notNull(),
   patientId: int("patientId").notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
-  method: mysqlEnum("method", ["cash", "card", "bank_transfer", "insurance"]).notNull(),
+  method: mysqlEnum("method", ["cash", "card", "bank_transfer", "insurance", "gcash", "maya", "qr_code"]).notNull(),
   reference: varchar("reference", { length: 128 }),
   type: mysqlEnum("type", ["payment", "refund"]).default("payment").notNull(),
   paidAt: timestamp("paidAt").defaultNow().notNull(),
@@ -440,7 +440,7 @@ export const auditLogMigrationSql = `
 CREATE TABLE auditLogs (
   id INT AUTO_INCREMENT PRIMARY KEY,
   actorUserId INT NULL,
-  actorRole ENUM('admin','dentist','receptionist','staff','patient') NULL,
+  actorRole ENUM('admin','dentist','receptionist','staff') NULL,
   action VARCHAR(32) NOT NULL,
   resourceType VARCHAR(64) NOT NULL,
   resourceId VARCHAR(64) NULL,
@@ -565,4 +565,3 @@ export const patientPortalRecoveryRequests = mysqlTable("patientPortalRecoveryRe
 
 export type PatientPortalRecoveryRequest = typeof patientPortalRecoveryRequests.$inferSelect;
 export type InsertPatientPortalRecoveryRequest = typeof patientPortalRecoveryRequests.$inferInsert;
-

@@ -20,7 +20,7 @@ export const ACCESS_MATRIX: Record<AccessArea, Record<Role, Permission>> = {
   medical: {
     admin: "conditional_read",
     dentist: "write",
-    receptionist: "read",
+    receptionist: "none",
     staff: "limited_read",
     patient: "none",
   },
@@ -126,7 +126,7 @@ export async function appendAuditLog(
   entry: Omit<InsertAuditLog, "actorUserId" | "actorRole" | "ipAddress" | "userAgent">,
 ) {
   const db = await getDb();
-  if (!db) return 0;
+  if (!db) throw new Error("Database not available");
   const actorRole = roleOf(ctx);
   const request = requestAuditFields(ctx);
   const result = await db.insert(auditLogs).values({

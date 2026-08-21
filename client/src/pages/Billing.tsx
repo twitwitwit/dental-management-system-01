@@ -33,6 +33,7 @@ import {
   ReceiptText,
   Sparkles,
   Stethoscope,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { CDTCodePicker } from "@/components/CDTCodePicker";
@@ -91,7 +92,10 @@ export default function Billing() {
   const [paymentInvoiceId, setPaymentInvoiceId] = useState<number | null>(null);
   const [paymentPatientId, setPaymentPatientId] = useState<number>(0);
   const [paymentAmount, setPaymentAmount] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "bank_transfer" | "insurance">("cash");
+  const [paymentMethod, setPaymentMethod] = useState<
+    "cash" | "card" | "bank_transfer" | "insurance" | "gcash" | "maya" | "qr_code"
+  >("cash");
+  const [paymentReference, setPaymentReference] = useState("");
   const [paymentType, setPaymentType] = useState<"payment" | "refund">("payment");
 
   const patients = trpc.patients.list.useQuery({}, { enabled: !!role });
@@ -99,7 +103,10 @@ export default function Billing() {
     { patientId: filterPatientId !== "all" ? Number(filterPatientId) : undefined },
     { enabled: !!role },
   );
-  const payments = trpc.billing.payments.useQuery({}, { enabled: !!role });
+  const payments = trpc.billing.payments.useQuery(
+    { patientId: filterPatientId !== "all" ? Number(filterPatientId) : undefined },
+    { enabled: !!role },
+  );
 
   const balanceByInvoice = useMemo(() => {
     const map = new Map<number, { total: number; paid: number; balance: number }>();
@@ -139,6 +146,8 @@ export default function Billing() {
       toast.success(`Payment posted. Remaining balance: ${formatMoney(res.newBalance.balance)}`);
       setPaymentDialog(false);
       setPaymentAmount("");
+      setPaymentReference("");
+      setPaymentMethod("cash");
       utils.billing.invoices.invalidate();
       utils.billing.payments.invalidate();
     },
@@ -153,6 +162,31 @@ export default function Billing() {
     (patients.data ?? []).forEach(p => map.set(p.id, p));
     return map;
   }, [patients.data]);
+
+  const matchingPatients = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (query.length < 2) return [];
+
+    return (patients.data ?? [])
+      .filter(patient => {
+        const haystack = [
+          patient.firstName,
+          patient.lastName,
+          patient.phone,
+          patient.email,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(query);
+      })
+      .slice(0, 8);
+  }, [patients.data, search]);
+
+  const clearPatientFilter = () => {
+    setSearch("");
+    setFilterPatientId("all");
+  };
 
   return (
     <DashboardLayout>
@@ -375,19 +409,57 @@ export default function Billing() {
       <SectionCard
         title="Invoices"
         actions={
-          <Select value={filterPatientId} onValueChange={setFilterPatientId}>
-            <SelectTrigger className="w-44 h-8 bg-background">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All patients</SelectItem>
-              {(patients.data ?? []).map(p => (
-                <SelectItem key={p.id} value={String(p.id)}>
-                  {p.firstName} {p.lastName}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="relative w-full max-w-xs">
+            <Input
+              value={search}
+              onChange={event => {
+                setSearch(event.target.value);
+                setFilterPatientId("all");
+              }}
+              placeholder="Search patients..."
+              aria-label="Search patients for billing"
+              className="h-8 bg-background pr-8"
+            />
+            {search ? (
+              <button
+                type="button"
+                onClick={clearPatientFilter}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+                aria-label="Clear patient search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+            {search.trim().length >= 2 && filterPatientId === "all" ? (
+              <div className="absolute left-0 right-0 top-10 z-20 overflow-hidden rounded-lg border bg-popover p-1 shadow-lg">
+                {matchingPatients.length ? (
+                  matchingPatients.map(patient => (
+                    <button
+                      key={patient.id}
+                      type="button"
+                      onClick={() => {
+                        setFilterPatientId(String(patient.id));
+                        setSearch(`${patient.firstName} ${patient.lastName}`);
+                      }}
+                      className="flex w-full items-start rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent"
+                    >
+                      <span className="font-medium">
+                        {patient.firstName} {patient.lastName}
+                      </span>
+                      {patient.phone ? (
+                        <span className="ml-2 text-xs text-muted-foreground">{patient.phone}</span>
+                      ) : null}
+                    </button>
+                  ))
+                ) : (
+                  <p className="px-3 py-2 text-sm text-muted-foreground">No matching patients.</p>
+                )}
+              </div>
+            ) : null}
+            {filterPatientId !== "all" ? (
+              <p className="mt-1 text-[11px] text-muted-foreground">Showing this patient&apos;s billing history.</p>
+            ) : null}
+          </div>
         }
       >
         {invoices.isLoading ? (
@@ -470,6 +542,8 @@ export default function Billing() {
                             setPaymentInvoiceId(inv.id);
                             setPaymentPatientId(inv.patientId);
                             setPaymentAmount(balance ? String(Math.min(Number(balance.balance), Number(inv.total))) : "0");
+                            setPaymentMethod("cash");
+                            setPaymentReference("");
                             setPaymentType("payment");
                             setPaymentDialog(true);
                           }}
@@ -551,7 +625,16 @@ export default function Billing() {
       </div>
 
       {/* Payment dialog */}
-      <Dialog open={paymentDialog} onOpenChange={setPaymentDialog}>
+      <Dialog
+        open={paymentDialog}
+        onOpenChange={open => {
+          setPaymentDialog(open);
+          if (!open) {
+            setPaymentReference("");
+            setPaymentMethod("cash");
+          }
+        }}
+      >
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Record {paymentType === "refund" ? "Refund" : "Payment"}</DialogTitle>
@@ -566,6 +649,7 @@ export default function Billing() {
                 patientId: paymentPatientId,
                 amount: Number(paymentAmount),
                 method: paymentMethod,
+                reference: paymentReference.trim() || null,
                 type: paymentType,
               });
             }}
@@ -588,7 +672,14 @@ export default function Billing() {
             </div>
             <div className="grid gap-1.5">
               <Label>Method</Label>
-              <Select value={paymentMethod} onValueChange={v => setPaymentMethod(v as "cash")}>
+              <Select
+                value={paymentMethod}
+                onValueChange={v =>
+                  setPaymentMethod(
+                    v as "cash" | "card" | "bank_transfer" | "insurance" | "gcash" | "maya" | "qr_code",
+                  )
+                }
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -597,9 +688,26 @@ export default function Billing() {
                   <SelectItem value="card">Card</SelectItem>
                   <SelectItem value="bank_transfer">Bank transfer</SelectItem>
                   <SelectItem value="insurance">Insurance</SelectItem>
+                  <SelectItem value="gcash">GCash</SelectItem>
+                  <SelectItem value="maya">Maya</SelectItem>
+                  <SelectItem value="qr_code">QR code</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+            {paymentMethod === "gcash" || paymentMethod === "maya" || paymentMethod === "qr_code" ? (
+              <div className="grid gap-1.5">
+                <Label>Transaction reference</Label>
+                <Input
+                  value={paymentReference}
+                  onChange={event => setPaymentReference(event.target.value)}
+                  placeholder="Reference number or transaction ID"
+                  maxLength={120}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Enter the reference shown in the patient&apos;s GCash, Maya, or QR payment receipt.
+                </p>
+              </div>
+            ) : null}
             <Button type="submit" disabled={recordPayment.isPending} className="gap-1.5">
               {recordPayment.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlusCircle className="h-4 w-4" />}
               Record
