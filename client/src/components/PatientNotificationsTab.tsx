@@ -1,0 +1,12 @@
+import { Button } from "@/components/ui/button";
+import { Loader2, Bell, CheckCheck } from "lucide-react";
+import { trpc } from "@/lib/trpc";
+
+export default function PatientNotificationsTab() {
+  const utils = trpc.useUtils();
+  const notifications = trpc.patientPortal.notifications.useQuery({ limit: 50 });
+  const markRead = trpc.patientPortal.markNotificationRead.useMutation({ onSuccess: () => utils.patientPortal.notifications.invalidate() });
+  const markAllRead = trpc.patientPortal.markAllNotificationsRead.useMutation({ onSuccess: () => utils.patientPortal.notifications.invalidate() });
+  if (notifications.isLoading) return <Loader2 className="h-6 w-6 animate-spin text-primary" />;
+  return <div className="space-y-5"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-sm text-muted-foreground">Notifications</p><h1 className="text-2xl font-semibold">Stay updated</h1><p className="mt-1 text-sm text-muted-foreground">Appointment reminders, schedule changes, and payment updates appear here.</p></div><Button variant="outline" size="sm" disabled={markAllRead.isPending || !notifications.data?.some(item => !item.readAt)} onClick={() => markAllRead.mutate()}><CheckCheck className="mr-2 h-4 w-4" />Mark all read</Button></div><div className="space-y-3">{notifications.data?.length ? notifications.data.map(item => <article key={item.id} className={`rounded-2xl border p-4 shadow-sm transition ${item.readAt ? "bg-card" : "border-primary/40 bg-primary/5"}`}><div className="flex gap-3"><div className="mt-0.5 rounded-full bg-primary/10 p-2"><Bell className="h-4 w-4 text-primary" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><h2 className="font-medium">{item.title}</h2>{!item.readAt && <span className="rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">New</span>}</div><p className="mt-1 text-sm text-muted-foreground">{item.body}</p><div className="mt-3 flex flex-wrap items-center justify-between gap-2"><time className="text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleString("en-PH")}</time>{!item.readAt && <Button variant="ghost" size="sm" onClick={() => markRead.mutate({ notificationId: item.id })}>Mark read</Button>}</div></div></div></article>) : <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">You have no notifications.</div>}</div></div>;
+}

@@ -56,6 +56,10 @@ const ROLE_COPY: Record<Role, { title: string; description: string }> = {
     title: "Daily operations",
     description: "Stay on top of today’s visits and stock tasks.",
   },
+  patient: {
+    title: "Patient portal",
+    description: "View your appointments, treatment plans, and billing history.",
+  },
 };
 
 function manilaDateKey(value: Date | string): string {

@@ -4,14 +4,12 @@ import {
   ClipboardList,
   HandCoins,
   LayoutDashboard,
-  ScrollText,
   Settings,
   ShieldCheck,
   Stethoscope,
   Users,
   Waypoints,
 } from "lucide-react";
-
 
 export type Role = "admin" | "dentist" | "receptionist" | "staff" | "patient";
 
@@ -25,9 +23,7 @@ export type RoleModule =
   | "insurance"
   | "reports"
   | "users"
-  | "audit"
-  | "settings"
-  | "patientPortal";
+  | "settings";
 
 export const ROLE_LABELS: Record<Role, string> = {
   admin: "Administrator",
@@ -37,10 +33,6 @@ export const ROLE_LABELS: Record<Role, string> = {
   patient: "Patient",
 };
 
-/**
- * Per-role module access. Roles map to exactly the modules described
- * in the authoritative specification.
- */
 export const ROLE_SCOPES: Record<Role, RoleModule[]> = {
   admin: [
     "dashboard",
@@ -52,7 +44,6 @@ export const ROLE_SCOPES: Record<Role, RoleModule[]> = {
     "insurance",
     "reports",
     "users",
-    "audit",
     "settings",
   ],
   dentist: [
@@ -67,12 +58,8 @@ export const ROLE_SCOPES: Record<Role, RoleModule[]> = {
   ],
   receptionist: ["dashboard", "patients", "appointments", "billing", "insurance"],
   staff: ["dashboard", "appointments", "inventory"],
-  patient: ["patientPortal"],
+  patient: ["dashboard", "appointments", "billing"],
 };
-
-export const PATIENT_PORTAL_NAV_ITEMS = [
-  { id: "patientPortal" as const, label: "My Portal", path: "/patient", icon: LayoutDashboard },
-];
 
 export interface NavItem {
   id: RoleModule;
@@ -91,15 +78,13 @@ export const NAV_ITEMS: NavItem[] = [
   { id: "insurance", label: "Insurance", path: "/insurance", icon: ShieldCheck },
   { id: "reports", label: "Reports", path: "/reports", icon: ClipboardList },
   { id: "users", label: "Staff Management", path: "/users", icon: Users },
-  { id: "audit", label: "Audit Logs", path: "/audit", icon: ScrollText },
   { id: "settings", label: "Clinic Settings", path: "/settings", icon: Settings },
 ];
 
 export function useCurrentRole(): Role | null {
   const { user } = useAuth();
   const u = user as unknown as { role?: Role } | null;
-  const role = u?.role ?? null;
-  return role ?? null;
+  return u?.role ?? null;
 }
 
 export function canAccess(role: Role | null, moduleId: string): boolean {
@@ -108,7 +93,6 @@ export function canAccess(role: Role | null, moduleId: string): boolean {
 }
 
 export function navForRole(role: Role | null): NavItem[] {
-  if (!role) return [];
-  const scope = ROLE_SCOPES[role];
-  return NAV_ITEMS.filter(item => scope.includes(item.id));
+  if (!role || role === "patient") return [];
+  return NAV_ITEMS.filter(item => ROLE_SCOPES[role].includes(item.id));
 }

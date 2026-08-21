@@ -20,44 +20,50 @@ export const ACCESS_MATRIX: Record<AccessArea, Record<Role, Permission>> = {
   medical: {
     admin: "conditional_read",
     dentist: "write",
-    receptionist: "none",
+    receptionist: "read",
     staff: "limited_read",
+    patient: "none",
   },
   billing: {
     admin: "admin",
     dentist: "read",
     receptionist: "write",
     staff: "none",
+    patient: "none",
   },
   appointments: {
     admin: "read",
     dentist: "write",
     receptionist: "write",
     staff: "read",
+    patient: "none",
   },
   inventory: {
     admin: "admin",
     dentist: "read",
     receptionist: "read",
     staff: "write",
+    patient: "none",
   },
   settings: {
     admin: "admin",
     dentist: "none",
     receptionist: "none",
     staff: "none",
+    patient: "none",
   },
   audit: {
     admin: "admin",
     dentist: "none",
     receptionist: "none",
     staff: "none",
+    patient: "none",
   },
 };
 
 export function roleOf(ctx: { user: { role?: unknown } | null }): Role | null {
   const role = ctx.user?.role;
-  return role === "admin" || role === "dentist" || role === "receptionist" || role === "staff"
+  return role === "admin" || role === "dentist" || role === "receptionist" || role === "staff" || role === "patient"
     ? role
     : null;
 }
@@ -120,7 +126,7 @@ export async function appendAuditLog(
   entry: Omit<InsertAuditLog, "actorUserId" | "actorRole" | "ipAddress" | "userAgent">,
 ) {
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
+  if (!db) return 0;
   const actorRole = roleOf(ctx);
   const request = requestAuditFields(ctx);
   const result = await db.insert(auditLogs).values({

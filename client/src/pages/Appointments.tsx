@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -16,8 +21,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
 import { useCurrentRole } from "@/lib/roles";
-import { formatDate, formatStatusLabel, formatTime, toDateStr } from "@/lib/format";
-import { EmptyState, PageHeader, SectionCard, StatusBadge } from "@/components/dental";
+import { formatDateTime, toDateStr } from "@/lib/format";
+import {
+  EmptyState,
+  PageHeader,
+  SectionCard,
+  StatusBadge,
+} from "@/components/dental";
 import {
   CalendarPlus,
   ChevronLeft,
@@ -35,8 +45,12 @@ export default function Appointments() {
   const [view, setView] = useState<"list" | "calendar">("list");
   const [statusFilter, setStatusFilter] = useState("all");
   const [cursor, setCursor] = useState(() => new Date());
+  const [selectedCalendarDay, setSelectedCalendarDay] = useState(() =>
+    toDateStr(new Date())
+  );
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState("");
+  const [selectedDentist, setSelectedDentist] = useState("");
   const [appointmentDate, setAppointmentDate] = useState(toDateStr(new Date()));
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("10:00");
@@ -56,7 +70,7 @@ export default function Appointments() {
       dateTo: `${monthKey}-31`,
       status: statusFilter === "all" ? undefined : statusFilter,
     },
-    { enabled: !!role },
+    { enabled: !!role }
   );
 
   const create = trpc.appointments.create.useMutation({
@@ -84,12 +98,16 @@ export default function Appointments() {
     onError: e => toast.error(e.message),
   });
 
-  const canManage = role === "admin" || role === "dentist" || role === "receptionist";
+  const canManage =
+    role === "admin" || role === "dentist" || role === "receptionist";
   const isStaff = role === "staff";
 
   const monthTitle = useMemo(() => {
     const [y, m] = monthKey.split("-").map(Number);
-    return new Date(y, m - 1).toLocaleDateString("en-PH", { month: "long", year: "numeric" });
+    return new Date(y, m - 1).toLocaleDateString("en-US", {
+      month: "long",
+      year: "numeric",
+    });
   }, [monthKey]);
 
   const patientById = useMemo(() => {
@@ -106,12 +124,17 @@ export default function Appointments() {
     const cells: (string | null)[] = [];
     for (let i = 0; i < startWeekday; i++) cells.push(null);
     for (let d = 1; d <= daysInMonth; d++) {
-      cells.push(`${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+      cells.push(
+        `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`
+      );
     }
     while (cells.length % 7 !== 0) cells.push(null);
     const byDate = new Map<string, typeof appointments.data>();
     (appointments.data ?? []).forEach(a => {
-      const key = typeof a.appointmentDate === "string" ? a.appointmentDate : toDateStr(a.appointmentDate);
+      const key =
+        typeof a.appointmentDate === "string"
+          ? a.appointmentDate
+          : toDateStr(a.appointmentDate);
       const list = byDate.get(key) ?? [];
       list.push(a);
       byDate.set(key, list);
@@ -122,19 +145,26 @@ export default function Appointments() {
   const prevMonth = () => {
     const [y, m] = monthKey.split("-").map(Number);
     const d = new Date(y, m - 2, 1);
-    setMonthKey(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    const nextMonthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    setMonthKey(nextMonthKey);
+    setSelectedCalendarDay(`${nextMonthKey}-01`);
   };
   const nextMonth = () => {
     const [y, m] = monthKey.split("-").map(Number);
     const d = new Date(y, m, 1);
-    setMonthKey(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    const nextMonthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    setMonthKey(nextMonthKey);
+    setSelectedCalendarDay(`${nextMonthKey}-01`);
   };
+
+  const selectedDayAppointments =
+    calendarData.byDate.get(selectedCalendarDay) ?? [];
 
   return (
     <DashboardLayout>
       <PageHeader
         title="Appointments"
-        description="Book visits, update status, and keep the daily schedule accurate."
+        description="Schedule, reschedule, and track appointments."
         actions={
           canManage ? (
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -143,20 +173,37 @@ export default function Appointments() {
               </Button>
               <DialogContent className="max-w-md">
                 <DialogHeader>
-                  <DialogTitle>Schedule a visit</DialogTitle>
+                  <DialogTitle>Schedule Appointment</DialogTitle>
                 </DialogHeader>
                 <form
                   className="grid gap-3.5"
                   onSubmit={e => {
                     e.preventDefault();
+
                     const patientId = Number(selectedPatient);
+                    const parsedDentistId = Number(selectedDentist);
+
                     if (!patientId) {
                       toast.error("Please select a patient");
                       return;
                     }
+
+                    if (
+                      !Number.isInteger(parsedDentistId) ||
+                      parsedDentistId <= 0
+                    ) {
+                      toast.error("Please select a dentist");
+                      return;
+                    }
+
+                    if (!appointmentDate || !startTime || !endTime) {
+                      toast.error("Please complete the date and time fields");
+                      return;
+                    }
+
                     create.mutate({
                       patientId,
-                      dentistId: null,
+                      dentistId: parsedDentistId,
                       appointmentDate,
                       startTime,
                       endTime,
@@ -168,7 +215,10 @@ export default function Appointments() {
                 >
                   <div className="grid gap-1.5">
                     <Label>Patient *</Label>
-                    <Select value={selectedPatient} onValueChange={setSelectedPatient}>
+                    <Select
+                      value={selectedPatient}
+                      onValueChange={setSelectedPatient}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select patient" />
                       </SelectTrigger>
@@ -184,30 +234,58 @@ export default function Appointments() {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="grid gap-1.5">
                       <Label>Date *</Label>
-                      <Input type="date" value={appointmentDate} onChange={e => setAppointmentDate(e.target.value)} />
+                      <Input
+                        type="date"
+                        value={appointmentDate}
+                        onChange={e => setAppointmentDate(e.target.value)}
+                      />
                     </div>
                     <div className="grid gap-1.5">
-                      <Label>Visit type</Label>
-                      <Input value={type} onChange={e => setType(e.target.value)} placeholder="e.g. consultation, cleaning" />
+                      <Label>Type</Label>
+                      <Input
+                        value={type}
+                        onChange={e => setType(e.target.value)}
+                        placeholder="e.g. checkup"
+                      />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="grid gap-1.5">
                       <Label>Start time *</Label>
-                      <Input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} />
+                      <Input
+                        type="time"
+                        value={startTime}
+                        onChange={e => setStartTime(e.target.value)}
+                      />
                     </div>
                     <div className="grid gap-1.5">
                       <Label>End time *</Label>
-                      <Input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
+                      <Input
+                        type="time"
+                        value={endTime}
+                        onChange={e => setEndTime(e.target.value)}
+                      />
                     </div>
                   </div>
                   <div className="grid gap-1.5">
                     <Label>Notes</Label>
-                    <Textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)} />
+                    <Textarea
+                      rows={2}
+                      value={notes}
+                      onChange={e => setNotes(e.target.value)}
+                    />
                   </div>
-                  <Button type="submit" disabled={create.isPending} className="gap-1.5">
-                    {create.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />}
-                    Save appointment
+                  <Button
+                    type="submit"
+                    disabled={create.isPending}
+                    className="gap-1.5"
+                  >
+                    {create.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <CalendarPlus className="h-4 w-4" />
+                    )}
+                    Schedule
                   </Button>
                 </form>
               </DialogContent>
@@ -239,7 +317,7 @@ export default function Appointments() {
             <SelectItem value="all">All statuses</SelectItem>
             {STATUSES.map(s => (
               <SelectItem key={s} value={s}>
-                {formatStatusLabel(s)}
+                {s.replaceAll("_", " ")}
               </SelectItem>
             ))}
           </SelectContent>
@@ -247,18 +325,24 @@ export default function Appointments() {
       </div>
 
       {view === "list" ? (
-        <SectionCard title={`${(appointments.data ?? []).length} appointment${(appointments.data ?? []).length === 1 ? "" : "s"}`}>
+        <SectionCard
+          title={`${(appointments.data ?? []).length} appointment${(appointments.data ?? []).length === 1 ? "" : "s"}`}
+        >
           {appointments.isLoading ? (
             <div className="flex justify-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
             </div>
           ) : !appointments.data?.length ? (
             <EmptyState
-              title="No visits scheduled this month"
-              description="There are no visits in the selected month."
+              title="No appointments this month"
+              description="Create a new appointment to get started."
               action={
                 canManage ? (
-                  <Button variant="outline" className="gap-1.5" onClick={() => setDialogOpen(true)}>
+                  <Button
+                    variant="outline"
+                    className="gap-1.5"
+                    onClick={() => setDialogOpen(true)}
+                  >
                     <CalendarPlus className="h-4 w-4" /> New Appointment
                   </Button>
                 ) : undefined
@@ -269,16 +353,26 @@ export default function Appointments() {
               {appointments.data.map(a => {
                 const patient = patientById.get(a.patientId);
                 return (
-                  <div key={a.id} className="py-3.5 flex flex-wrap items-center gap-x-6 gap-y-2">
+                  <div
+                    key={a.id}
+                    className="py-3.5 flex flex-wrap items-center gap-x-6 gap-y-2"
+                  >
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold truncate">
-                        {patient ? `${patient.firstName} ${patient.lastName}` : `Patient #${a.patientId}`}
+                        {patient
+                          ? `${patient.firstName} ${patient.lastName}`
+                          : `Patient #${a.patientId}`}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {formatDate(a.appointmentDate)} · {formatTime(a.startTime)}–{formatTime(a.endTime)}
+                        {formatDateTime(a.appointmentDate)} · {a.startTime}–
+                        {a.endTime}
                         {a.type ? ` · ${a.type}` : ""}
                       </p>
-                      {a.notes ? <p className="text-xs text-muted-foreground mt-0.5 max-w-xl truncate">{a.notes}</p> : null}
+                      {a.notes ? (
+                        <p className="text-xs text-muted-foreground mt-0.5 max-w-xl truncate">
+                          {a.notes}
+                        </p>
+                      ) : null}
                     </div>
                     <div className="flex items-center gap-2">
                       <StatusBadge status={a.status} />
@@ -298,7 +392,7 @@ export default function Appointments() {
                           <SelectContent>
                             {STATUSES.map(s => (
                               <SelectItem key={s} value={s}>
-                                {formatStatusLabel(s)}
+                                {s.replaceAll("_", " ")}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -320,7 +414,7 @@ export default function Appointments() {
                           <SelectContent>
                             {STATUSES.map(s => (
                               <SelectItem key={s} value={s}>
-                                {formatStatusLabel(s)}
+                                {s.replaceAll("_", " ")}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -348,10 +442,20 @@ export default function Appointments() {
           title={monthTitle}
           actions={
             <div className="flex items-center gap-1">
-              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={prevMonth}>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8"
+                onClick={prevMonth}
+              >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={nextMonth}>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8"
+                onClick={nextMonth}
+              >
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
@@ -359,19 +463,37 @@ export default function Appointments() {
         >
           <div className="grid grid-cols-7 gap-px bg-border/60 rounded-xl overflow-hidden">
             {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => (
-              <div key={d} className="bg-muted/60 px-2 py-1.5 text-[11px] font-semibold text-muted-foreground uppercase text-center">
+              <div
+                key={d}
+                className="bg-muted/60 px-2 py-1.5 text-[11px] font-semibold text-muted-foreground uppercase text-center"
+              >
                 {d}
               </div>
             ))}
             {calendarData.cells.map((day, i) => {
               const dayApps = day ? (calendarData.byDate.get(day) ?? []) : [];
               const isToday = day === toDateStr(new Date());
+              const isSelected = day === selectedCalendarDay;
               return (
                 <div
                   key={i}
+                  role={day ? "button" : undefined}
+                  tabIndex={day ? 0 : undefined}
+                  aria-label={day ? `View appointments for ${day}` : undefined}
+                  onClick={() => day && setSelectedCalendarDay(day)}
+                  onKeyDown={event => {
+                    if (day && (event.key === "Enter" || event.key === " ")) {
+                      event.preventDefault();
+                      setSelectedCalendarDay(day);
+                    }
+                  }}
                   className={cn(
-                    "min-h-20 bg-card p-1.5",
+                    "min-h-20 bg-card p-1.5 transition-colors",
                     !day && "bg-muted/20",
+                    day &&
+                      "cursor-pointer hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset",
+                    isSelected &&
+                      "bg-primary/10 ring-2 ring-inset ring-primary/50"
                   )}
                 >
                   {day ? (
@@ -379,7 +501,9 @@ export default function Appointments() {
                       <span
                         className={cn(
                           "inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold",
-                          isToday ? "bg-primary text-primary-foreground" : "text-muted-foreground",
+                          isToday
+                            ? "bg-primary text-primary-foreground"
+                            : "text-muted-foreground"
                         )}
                       >
                         {Number(day.slice(8))}
@@ -388,7 +512,18 @@ export default function Appointments() {
                         {dayApps.slice(0, 3).map(a => (
                           <button
                             key={a.id}
-                            onClick={() => update.mutate({ id: a.id, data: { status: a.status === "scheduled" ? "confirmed" : "scheduled" } })}
+                            onClick={event => {
+                              event.stopPropagation();
+                              update.mutate({
+                                id: a.id,
+                                data: {
+                                  status:
+                                    a.status === "scheduled"
+                                      ? "confirmed"
+                                      : "scheduled",
+                                },
+                              });
+                            }}
                             className={cn(
                               "w-full truncate rounded px-1 py-0.5 text-[10px] font-medium text-left transition-transform hover:scale-[1.02]",
                               a.status === "confirmed"
@@ -397,10 +532,11 @@ export default function Appointments() {
                                   ? "bg-slate-100 text-slate-600"
                                   : a.status === "no_show"
                                     ? "bg-rose-100 text-rose-700"
-                                    : "bg-teal-100 text-teal-800",
+                                    : "bg-teal-100 text-teal-800"
                             )}
                           >
-                            {a.startTime} {patientById.get(a.patientId)?.firstName ?? "#"}
+                            {a.startTime}{" "}
+                            {patientById.get(a.patientId)?.firstName ?? "#"}
                           </button>
                         ))}
                         {dayApps.length > 3 ? (
@@ -416,8 +552,79 @@ export default function Appointments() {
             })}
           </div>
           <p className="mt-3 text-xs text-muted-foreground text-center">
-            Click an appointment in the calendar to toggle scheduled/confirmed status.
+            Select a date to view all appointments for that day. Click an
+            appointment to toggle scheduled/confirmed status.
           </p>
+          <div className="mt-4 rounded-xl border bg-background p-3 sm:p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold">
+                Appointments for {selectedCalendarDay}
+              </h3>
+              <Badge variant="outline">
+                {selectedDayAppointments.length} appointment
+                {selectedDayAppointments.length === 1 ? "" : "s"}
+              </Badge>
+            </div>
+            {selectedDayAppointments.length === 0 ? (
+              <p className="py-4 text-center text-sm text-muted-foreground">
+                No appointments scheduled for this date.
+              </p>
+            ) : (
+              <div className="divide-y divide-border/70">
+                {selectedDayAppointments.map(a => {
+                  const patient = patientById.get(a.patientId);
+                  return (
+                    <div
+                      key={a.id}
+                      className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold">
+                          {patient
+                            ? `${patient.firstName} ${patient.lastName}`
+                            : `Patient #${a.patientId}`}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {a.startTime}–{a.endTime}
+                          {a.type ? ` · ${a.type}` : ""}
+                        </p>
+                        {a.notes ? (
+                          <p className="mt-0.5 max-w-xl truncate text-xs text-muted-foreground">
+                            {a.notes}
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={a.status} />
+                        {!isStaff ? (
+                          <Select
+                            value={a.status}
+                            onValueChange={value =>
+                              update.mutate({
+                                id: a.id,
+                                data: { status: value as "scheduled" },
+                              })
+                            }
+                          >
+                            <SelectTrigger className="h-8 w-32 bg-background text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {STATUSES.map(status => (
+                                <SelectItem key={status} value={status}>
+                                  {status.replaceAll("_", " ")}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </SectionCard>
       )}
     </DashboardLayout>

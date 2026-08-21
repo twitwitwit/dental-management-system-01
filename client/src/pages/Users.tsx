@@ -32,13 +32,15 @@ import AccessDenied from "@/pages/AccessDenied";
 import { Loader2, Plus, ShieldCheck, ShieldOff, UserCog } from "lucide-react";
 import { toast } from "sonner";
 
-const ROLE_VALUES: Role[] = ["admin", "dentist", "receptionist", "staff"];
+type StaffRole = "admin" | "dentist" | "receptionist" | "staff";
+
+const ROLE_VALUES: StaffRole[] = ["admin", "dentist", "receptionist", "staff"];
 
 type AccountDraft = {
   name: string;
   email: string;
   password: string;
-  role: Role;
+  role: StaffRole;
   phone: string;
 };
 
@@ -159,7 +161,7 @@ export default function Users() {
                       <Select
                         value={user.role}
                         onValueChange={value =>
-                          updateRole.mutate({ id: user.id, role: value as Role })
+                          updateRole.mutate({ id: user.id, role: value as StaffRole })
                         }
                       >
                         <SelectTrigger className="h-8 w-36 bg-background">
@@ -274,7 +276,7 @@ export default function Users() {
               <Label htmlFor="staff-role">Role</Label>
               <Select
                 value={draft.role}
-                onValueChange={value => setDraft(current => ({ ...current, role: value as Role }))}
+                onValueChange={value => setDraft(current => ({ ...current, role: value as StaffRole }))}
               >
                 <SelectTrigger id="staff-role">
                   <SelectValue />

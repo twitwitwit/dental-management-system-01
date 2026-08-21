@@ -13,6 +13,9 @@ import {
   patientAccounts,
   patientDocuments,
   patientInsurance,
+  patientHealthForms,
+  patientPortalInvitations,
+  patientPortalRecoveryRequests,
   patients,
   payments,
   periodontalStatus,
@@ -40,7 +43,7 @@ import {
   type InsertTreatmentProcedure,
   type InsertUser,
 } from "../drizzle/schema";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash, randomBytes } from "node:crypto";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -215,29 +218,61 @@ const PORTAL_SLOTS = [
   ["16:00", "16:30"], ["16:30", "17:00"],
 ] as const;
 
+/** Convert MySQL HH:MM:SS values and portal HH:MM values to HH:MM. */
+function normalizePortalTime(value: string) {
+  return value.slice(0, 5);
+}
+
 export async function listAvailableDentistSlots(date: string, dentistId?: number) {
   const db = await getDb();
   if (!db) return [];
+
   const dentists = dentistId
     ? await db
         .select({ id: users.id, name: users.name })
         .from(users)
-        .where(and(eq(users.id, dentistId), eq(users.role, "dentist"), eq(users.isActive, true)))
+        .where(
+          and(
+            eq(users.id, dentistId),
+            eq(users.role, "dentist"),
+            eq(users.isActive, true),
+          ),
+        )
     : await listAvailableDentists();
 
-  const results: Array<{ dentistId: number; dentistName: string; startTime: string; endTime: string }> = [];
+  const results: Array<{
+    dentistId: number;
+    dentistName: string;
+    startTime: string;
+    endTime: string;
+  }> = [];
+
   for (const dentist of dentists) {
     const booked = await db
-      .select({ startTime: appointments.startTime, endTime: appointments.endTime })
+      .select({
+        startTime: appointments.startTime,
+        endTime: appointments.endTime,
+      })
       .from(appointments)
       .where(
         and(
           eq(appointments.dentistId, dentist.id),
-          sql`DATE(${appointments.appointmentDate}) = ${date}`,
-          sql`${appointments.status} IN ('scheduled', 'confirmed')`,
+          // appointmentDate is a MySQL DATE column. Compare the stored date
+          // directly without wrapping it in DATE(...), preserving index use.
+          sql`${appointments.appointmentDate} = ${date}`,
+          inArray(appointments.status, ["scheduled", "confirmed"]),
         ),
       );
-    const occupied = new Set(booked.map(slot => `${slot.startTime}-${slot.endTime}`));
+
+    // MySQL may return varchar(8) times as HH:MM:SS, while PORTAL_SLOTS use
+    // HH:MM. Normalize both sides before checking occupancy.
+    const occupied = new Set(
+      booked.map(
+        slot =>
+          `${normalizePortalTime(slot.startTime)}-${normalizePortalTime(slot.endTime)}`,
+      ),
+    );
+
     for (const [startTime, endTime] of PORTAL_SLOTS) {
       if (!occupied.has(`${startTime}-${endTime}`)) {
         results.push({
@@ -249,6 +284,7 @@ export async function listAvailableDentistSlots(date: string, dentistId?: number
       }
     }
   }
+
   return results;
 }
 
@@ -263,30 +299,49 @@ export async function createPatientPortalAppointment(data: {
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+
+  const startTime = normalizePortalTime(data.startTime);
+  const endTime = normalizePortalTime(data.endTime);
+
+  if (!/^\d{2}:\d{2}$/.test(startTime) || !/^\d{2}:\d{2}$/.test(endTime)) {
+    throw new Error("Appointment times must use HH:MM format.");
+  }
+
+  // Reject reversed or zero-length intervals before querying or inserting.
+  if (startTime >= endTime) {
+    throw new Error("Appointment end time must be later than the start time.");
+  }
+
   const conflict = await db
     .select({ id: appointments.id })
     .from(appointments)
     .where(
       and(
         eq(appointments.dentistId, data.dentistId),
-        sql`DATE(${appointments.appointmentDate}) = ${data.appointmentDate}`,
-        eq(appointments.startTime, data.startTime),
-        sql`${appointments.status} IN ('scheduled', 'confirmed')`,
+        sql`${appointments.appointmentDate} = ${data.appointmentDate}`,
+        inArray(appointments.status, ["scheduled", "confirmed"]),
+        // Existing start < new end AND existing end > new start.
+        sql`${appointments.startTime} < ${endTime} AND ${appointments.endTime} > ${startTime}`,
       ),
     )
     .limit(1);
-  if (conflict.length) throw new Error("That time has just been booked. Please choose another slot.");
+
+  if (conflict.length > 0) {
+    throw new Error("That time has just been booked. Please choose another slot.");
+  }
 
   const result = await db.insert(appointments).values({
     patientId: data.patientId,
     dentistId: data.dentistId,
     appointmentDate: new Date(data.appointmentDate),
-    startTime: data.startTime,
-    endTime: data.endTime,
+    // Store new portal bookings consistently as HH:MM.
+    startTime,
+    endTime,
     type: data.type,
     status: "scheduled",
     notes: data.notes ?? "Booked through the patient portal.",
   });
+
   return Number(result[0].insertId);
 }
 
@@ -297,8 +352,8 @@ export async function getPatientPortalChart(patientId: number) {
     db.select().from(toothConditions).where(eq(toothConditions.patientId, patientId)),
     db.select().from(toothSurfaceConditions).where(eq(toothSurfaceConditions.patientId, patientId)),
     db.select().from(periodontalStatus).where(eq(periodontalStatus.patientId, patientId)),
-    db.select().from(treatmentPlans).where(and(eq(treatmentPlans.patientId, patientId), eq(treatmentPlans.patientVisible, true))).orderBy(desc(treatmentPlans.updatedAt)),
-    db.select().from(clinicalNotes).where(and(eq(clinicalNotes.patientId, patientId), eq(clinicalNotes.patientVisible, true))).orderBy(desc(clinicalNotes.noteDate)),
+    db.select().from(treatmentPlans).where(eq(treatmentPlans.patientId, patientId)).orderBy(desc(treatmentPlans.updatedAt)),
+    db.select().from(clinicalNotes).where(eq(clinicalNotes.patientId, patientId)).orderBy(desc(clinicalNotes.noteDate)),
     db.select().from(patientDocuments).where(and(eq(patientDocuments.patientId, patientId), eq(patientDocuments.visibleToPatient, true))).orderBy(desc(patientDocuments.uploadedAt)),
   ]);
   return { conditions, surfaces, perio, plans, notes, documents };
@@ -463,6 +518,13 @@ export async function getUserByEmail(email: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
+export async function getUserById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Patients
 // ---------------------------------------------------------------------------
@@ -532,17 +594,150 @@ export async function listAppointments(opts?: {
     .orderBy(appointments.appointmentDate, appointments.startTime);
 }
 
+const ACTIVE_APPOINTMENT_STATUSES = ["scheduled", "confirmed"] as const;
+
+type AppointmentTime = string;
+
+function normalizeAppointmentTime(value: AppointmentTime) {
+  const normalized = value.slice(0, 5);
+  if (!/^\d{2}:\d{2}$/.test(normalized)) {
+    throw new Error("Appointment times must use HH:MM format.");
+  }
+  return normalized;
+}
+
+function assertValidAppointmentRange(startTime: string, endTime: string) {
+  if (startTime >= endTime) {
+    throw new Error("Appointment end time must be later than the start time.");
+  }
+}
+
+function appointmentDateKey(value: Date) {
+  return value.toISOString().slice(0, 10);
+}
+
+/**
+ * Reject any active appointment whose interval overlaps the proposed interval.
+ *
+ * Half-open interval rule:
+ *   [newStart, newEnd) conflicts with [existingStart, existingEnd) when
+ *   existingStart < newEnd AND existingEnd > newStart.
+ *
+ * Appointments ending exactly when another begins are therefore allowed.
+ */
+async function assertNoAppointmentConflict(
+  db: Awaited<ReturnType<typeof getDb>>,
+  input: {
+    dentistId: number | null | undefined;
+    appointmentDate: Date;
+    startTime: string;
+    endTime: string;
+    excludeAppointmentId?: number;
+  },
+) {
+  if (!db) return;
+  if (input.dentistId == null) {
+    throw new Error("A dentist must be selected before scheduling an appointment.");
+  }
+
+  const conditions = [
+    eq(appointments.dentistId, input.dentistId),
+    sql`${appointments.appointmentDate} = ${appointmentDateKey(input.appointmentDate)}`,
+    inArray(appointments.status, ACTIVE_APPOINTMENT_STATUSES),
+    sql`${appointments.startTime} < ${input.endTime} AND ${appointments.endTime} > ${input.startTime}`,
+  ];
+
+  if (input.excludeAppointmentId !== undefined) {
+    conditions.push(sql`${appointments.id} <> ${input.excludeAppointmentId}`);
+  }
+
+  const conflict = await db
+    .select({ id: appointments.id })
+    .from(appointments)
+    .where(and(...conditions))
+    .limit(1);
+
+  if (conflict.length > 0) {
+    throw new Error(
+      "That dentist already has a scheduled or confirmed appointment during this time. Please choose another time.",
+    );
+  }
+}
+
 export async function createAppointment(data: InsertAppointment) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(appointments).values(data);
+
+  const startTime = normalizeAppointmentTime(data.startTime);
+  const endTime = normalizeAppointmentTime(data.endTime);
+  assertValidAppointmentRange(startTime, endTime);
+
+  const appointmentData: InsertAppointment = {
+    ...data,
+    startTime,
+    endTime,
+    // The database default is scheduled, so make that state explicit before
+    // running the conflict check as well.
+    status: data.status ?? "scheduled",
+  };
+
+  // Only active appointments reserve a dentist’s time. Completed and no-show
+  // records remain in history but do not block a new appointment.
+  if (appointmentData.status === "scheduled" || appointmentData.status === "confirmed") {
+    await assertNoAppointmentConflict(db, {
+      dentistId: appointmentData.dentistId,
+      appointmentDate: appointmentData.appointmentDate,
+      startTime,
+      endTime,
+    });
+  }
+
+  const result = await db.insert(appointments).values(appointmentData);
   return result[0].insertId;
 }
 
 export async function updateAppointment(id: number, data: Partial<InsertAppointment>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(appointments).set(data).where(eq(appointments.id, id));
+
+  const existingRows = await db
+    .select()
+    .from(appointments)
+    .where(eq(appointments.id, id))
+    .limit(1);
+  const existing = existingRows[0];
+  if (!existing) return;
+
+  const nextDentistId = data.dentistId !== undefined ? data.dentistId : existing.dentistId;
+  const nextDate = data.appointmentDate !== undefined ? data.appointmentDate : existing.appointmentDate;
+  const nextStartTime = data.startTime !== undefined
+    ? normalizeAppointmentTime(data.startTime)
+    : normalizeAppointmentTime(existing.startTime);
+  const nextEndTime = data.endTime !== undefined
+    ? normalizeAppointmentTime(data.endTime)
+    : normalizeAppointmentTime(existing.endTime);
+  const nextStatus = data.status !== undefined ? data.status : existing.status;
+
+  assertValidAppointmentRange(nextStartTime, nextEndTime);
+
+  if (nextStatus === "scheduled" || nextStatus === "confirmed") {
+    await assertNoAppointmentConflict(db, {
+      dentistId: nextDentistId,
+      appointmentDate: nextDate,
+      startTime: nextStartTime,
+      endTime: nextEndTime,
+      excludeAppointmentId: id,
+    });
+  }
+
+  await db
+    .update(appointments)
+    .set({
+      ...data,
+      startTime: nextStartTime,
+      endTime: nextEndTime,
+    })
+    .where(eq(appointments.id, id));
 }
 
 export async function deleteAppointment(id: number) {
@@ -1041,7 +1236,12 @@ export async function listStaffUsers() {
 
 export async function updateUserRoleAndStatus(
   id: number,
-  data: { role?: "admin" | "dentist" | "receptionist" | "staff"; isActive?: boolean },
+  data: {
+    role?: "admin" | "dentist" | "receptionist" | "staff" | "patient";
+    isActive?: boolean;
+    name?: string | null;
+    phone?: string | null;
+  },
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -1175,4 +1375,466 @@ export async function getAppointmentsByStatus() {
     .groupBy(appointments.status)
     .orderBy(appointments.status);
   return rows.map(r => ({ status: r.status, count: Number(r.count) }));
+}
+
+const DEFAULT_PATIENT_HEALTH_FORM_VERSION = "v1";
+const INVITATION_TTL_HOURS = 24;
+const RECOVERY_RATE_WINDOW_MS = 24 * 60 * 60 * 1000;
+const MAX_RECOVERY_REQUESTS_PER_WINDOW = 3;
+
+function hashPortalToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function parseHealthFormResponses(value: string) {
+  try {
+    return JSON.parse(value) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+export async function getRequiredPatientHealthFormVersion() {
+  const db = await getDb();
+  if (!db) return DEFAULT_PATIENT_HEALTH_FORM_VERSION;
+  const rows = await db
+    .select({ settingValue: clinicSettings.settingValue })
+    .from(clinicSettings)
+    .where(eq(clinicSettings.settingKey, "requiredPatientHealthFormVersion"))
+    .limit(1);
+  return rows[0]?.settingValue?.trim() || DEFAULT_PATIENT_HEALTH_FORM_VERSION;
+}
+
+export async function getPatientHealthFormStatus(patientId: number) {
+  const db = await getDb();
+  if (!db) {
+    return {
+      requiredVersion: DEFAULT_PATIENT_HEALTH_FORM_VERSION,
+      completed: false,
+      form: undefined,
+    };
+  }
+
+  const requiredVersion = await getRequiredPatientHealthFormVersion();
+  const rows = await db
+    .select()
+    .from(patientHealthForms)
+    .where(
+      and(
+        eq(patientHealthForms.patientId, patientId),
+        eq(patientHealthForms.formVersion, requiredVersion),
+      ),
+    )
+    .orderBy(desc(patientHealthForms.updatedAt))
+    .limit(1);
+  const form = rows[0];
+
+  return {
+    requiredVersion,
+    completed: form?.status === "completed" && form.consentAcknowledged,
+    form: form
+      ? { ...form, responses: parseHealthFormResponses(form.responses) }
+      : undefined,
+  };
+}
+
+export async function getPatientHealthForm(patientId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const requiredVersion = await getRequiredPatientHealthFormVersion();
+  const rows = await db
+    .select()
+    .from(patientHealthForms)
+    .where(
+      and(
+        eq(patientHealthForms.patientId, patientId),
+        eq(patientHealthForms.formVersion, requiredVersion),
+      ),
+    )
+    .orderBy(desc(patientHealthForms.updatedAt))
+    .limit(1);
+  const form = rows[0];
+  return form ? { ...form, responses: parseHealthFormResponses(form.responses) } : undefined;
+}
+
+export async function savePatientHealthForm(
+  patientId: number,
+  responses: Record<string, unknown>,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const formVersion = await getRequiredPatientHealthFormVersion();
+  const serialized = JSON.stringify(responses);
+  const existing = await db
+    .select({ id: patientHealthForms.id, status: patientHealthForms.status })
+    .from(patientHealthForms)
+    .where(
+      and(
+        eq(patientHealthForms.patientId, patientId),
+        eq(patientHealthForms.formVersion, formVersion),
+      ),
+    )
+    .orderBy(desc(patientHealthForms.updatedAt))
+    .limit(1);
+
+  if (existing[0] && existing[0].status !== "superseded") {
+    await db
+      .update(patientHealthForms)
+      .set({
+        status: "draft",
+        responses: serialized,
+        consentAcknowledged: false,
+        completedAt: null,
+      })
+      .where(eq(patientHealthForms.id, existing[0].id));
+    return existing[0].id;
+  }
+
+  const result = await db.insert(patientHealthForms).values({
+    patientId,
+    formVersion,
+    status: "draft",
+    responses: serialized,
+    consentAcknowledged: false,
+  });
+  return Number(result[0].insertId);
+}
+
+export async function completePatientHealthForm(
+  patientId: number,
+  responses: Record<string, unknown>,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const formVersion = await getRequiredPatientHealthFormVersion();
+
+  return db.transaction(async tx => {
+    await tx
+      .update(patientHealthForms)
+      .set({ status: "superseded" })
+      .where(
+        and(
+          eq(patientHealthForms.patientId, patientId),
+          eq(patientHealthForms.formVersion, formVersion),
+          eq(patientHealthForms.status, "completed"),
+        ),
+      );
+
+    const result = await tx.insert(patientHealthForms).values({
+      patientId,
+      formVersion,
+      status: "completed",
+      responses: JSON.stringify(responses),
+      consentAcknowledged: true,
+      completedAt: new Date(),
+    });
+    return { id: Number(result[0].insertId), formVersion };
+  });
+}
+
+export async function assertPatientHealthFormComplete(patientId: number) {
+  const status = await getPatientHealthFormStatus(patientId);
+  if (!status.completed) {
+    throw new Error("Complete the required health form before booking an appointment.");
+  }
+  return status;
+}
+
+async function findPatientForRecovery(input: {
+  firstName: string;
+  lastName: string;
+  dateOfBirth?: string | null;
+  email?: string | null;
+  phone?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const rows = await db
+    .select()
+    .from(patients)
+    .where(
+      and(
+        eq(patients.firstName, input.firstName),
+        eq(patients.lastName, input.lastName),
+      ),
+    )
+    .limit(20);
+
+  return rows.find(patient => {
+    const dateMatches = input.dateOfBirth
+      ? String(patient.dateOfBirth ?? "").slice(0, 10) === input.dateOfBirth
+      : true;
+    const emailMatches = input.email
+      ? (patient.email ?? "").trim().toLowerCase() === input.email.trim().toLowerCase()
+      : true;
+    const phoneMatches = input.phone
+      ? (patient.phone ?? "").replace(/\D/g, "") === input.phone.replace(/\D/g, "")
+      : true;
+    return dateMatches && emailMatches && phoneMatches;
+  });
+}
+
+export async function createPatientPortalInvitation(
+  patientId: number,
+  invitedByUserId: number,
+  ttlHours = INVITATION_TTL_HOURS,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const existingAccount = await db
+    .select({ id: patientAccounts.id })
+    .from(patientAccounts)
+    .where(eq(patientAccounts.patientId, patientId))
+    .limit(1);
+  if (existingAccount.length) {
+    throw new Error("This patient already has a portal account.");
+  }
+
+  await db
+    .update(patientPortalInvitations)
+    .set({ status: "revoked", revokedAt: new Date() })
+    .where(
+      and(
+        eq(patientPortalInvitations.patientId, patientId),
+        eq(patientPortalInvitations.status, "pending"),
+      ),
+    );
+
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
+  const result = await db.insert(patientPortalInvitations).values({
+    patientId,
+    tokenHash: hashPortalToken(token),
+    status: "pending",
+    invitedByUserId,
+    expiresAt,
+  });
+
+  return {
+    id: Number(result[0].insertId),
+    token,
+    expiresAt,
+  };
+}
+
+export async function getPatientPortalInvitationByToken(token: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db
+    .select()
+    .from(patientPortalInvitations)
+    .where(
+      and(
+        eq(patientPortalInvitations.tokenHash, hashPortalToken(token)),
+        eq(patientPortalInvitations.status, "pending"),
+      ),
+    )
+    .limit(1);
+  const invitation = rows[0];
+  if (!invitation) return undefined;
+  if (new Date(invitation.expiresAt).getTime() <= Date.now()) {
+    await db
+      .update(patientPortalInvitations)
+      .set({ status: "expired" })
+      .where(eq(patientPortalInvitations.id, invitation.id));
+    return undefined;
+  }
+  return invitation;
+}
+
+export async function claimPatientPortalInvitation(data: {
+  token: string;
+  email: string;
+  passwordHash: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return db.transaction(async tx => {
+    const rows = await tx
+      .select()
+      .from(patientPortalInvitations)
+      .where(
+        and(
+          eq(patientPortalInvitations.tokenHash, hashPortalToken(data.token)),
+          eq(patientPortalInvitations.status, "pending"),
+        ),
+      )
+      .limit(1);
+    const invitation = rows[0];
+    if (!invitation || new Date(invitation.expiresAt).getTime() <= Date.now()) {
+      throw new Error("This invitation is invalid or has expired.");
+    }
+
+    const linkedAccount = await tx
+      .select({ id: patientAccounts.id })
+      .from(patientAccounts)
+      .where(eq(patientAccounts.patientId, invitation.patientId))
+      .limit(1);
+    if (linkedAccount.length) throw new Error("This patient already has a portal account.");
+
+    const existingEmail = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, data.email.trim().toLowerCase()))
+      .limit(1);
+    if (existingEmail.length) throw new Error("This email is already in use.");
+
+    const patient = await tx
+      .select()
+      .from(patients)
+      .where(eq(patients.id, invitation.patientId))
+      .limit(1);
+    if (!patient[0]) throw new Error("Patient record not found.");
+
+    const userResult = await tx.insert(users).values({
+      openId: `patient_${randomBytes(16).toString("hex")}`,
+      name: `${patient[0].firstName} ${patient[0].lastName}`.trim(),
+      email: data.email.trim().toLowerCase(),
+      loginMethod: "local_patient",
+      passwordHash: data.passwordHash,
+      role: "patient",
+      isActive: true,
+      phone: patient[0].phone ?? null,
+    });
+    const userId = Number(userResult[0].insertId);
+
+    const accountResult = await tx.insert(patientAccounts).values({
+      userId,
+      patientId: invitation.patientId,
+      verificationStatus: "verified",
+      verificationNote: "Claimed through a clinic-issued invitation.",
+      verifiedAt: new Date(),
+      verifiedByUserId: invitation.invitedByUserId,
+    });
+
+    await tx
+      .update(patientPortalInvitations)
+      .set({
+        status: "claimed",
+        claimedAt: new Date(),
+        claimedByUserId: userId,
+      })
+      .where(eq(patientPortalInvitations.id, invitation.id));
+
+    return {
+      userId,
+      patientId: invitation.patientId,
+      patientAccountId: Number(accountResult[0].insertId),
+    };
+  });
+}
+
+export async function createPatientPortalRecoveryRequest(input: {
+  firstName: string;
+  lastName: string;
+  dateOfBirth?: string | null;
+  email?: string | null;
+  phone?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const cutoff = new Date(Date.now() - RECOVERY_RATE_WINDOW_MS);
+  const recent = await db
+    .select({ id: patientPortalRecoveryRequests.id })
+    .from(patientPortalRecoveryRequests)
+    .where(
+      and(
+        eq(patientPortalRecoveryRequests.status, "pending"),
+        gte(patientPortalRecoveryRequests.createdAt, cutoff),
+      ),
+    )
+    .limit(100);
+  if (recent.length >= MAX_RECOVERY_REQUESTS_PER_WINDOW) {
+    throw new Error("Too many recovery requests. Please contact the clinic directly.");
+  }
+
+  const patient = await findPatientForRecovery(input);
+  const result = await db.insert(patientPortalRecoveryRequests).values({
+    patientId: patient?.id ?? null,
+    firstName: input.firstName,
+    lastName: input.lastName,
+    dateOfBirth: input.dateOfBirth ?? null,
+    requestedEmail: input.email?.trim().toLowerCase() ?? null,
+    requestedPhone: input.phone ?? null,
+    status: "pending",
+  });
+
+  // Always return a neutral result. Do not reveal whether a patient record matched.
+  return { id: Number(result[0].insertId) };
+}
+
+export async function listPatientPortalRecoveryRequests(
+  status?: "pending" | "approved" | "rejected" | "cancelled",
+) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select()
+    .from(patientPortalRecoveryRequests)
+    .where(status ? eq(patientPortalRecoveryRequests.status, status) : undefined)
+    .orderBy(desc(patientPortalRecoveryRequests.createdAt));
+
+  return Promise.all(rows.map(async request => ({
+    request,
+    patient: request.patientId ? await getPatientById(request.patientId) : undefined,
+  })));
+}
+
+export async function reviewPatientPortalRecoveryRequest(
+  requestId: number,
+  input: {
+    status: "approved" | "rejected";
+    verificationMethod?: string | null;
+    verificationNote?: string | null;
+    reviewedByUserId: number;
+  },
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db
+    .select()
+    .from(patientPortalRecoveryRequests)
+    .where(eq(patientPortalRecoveryRequests.id, requestId))
+    .limit(1);
+  const request = rows[0];
+  if (!request) return undefined;
+
+  await db
+    .update(patientPortalRecoveryRequests)
+    .set({
+      status: input.status,
+      verificationMethod: input.verificationMethod ?? null,
+      verificationNote: input.verificationNote ?? null,
+      reviewedByUserId: input.reviewedByUserId,
+      reviewedAt: new Date(),
+    })
+    .where(eq(patientPortalRecoveryRequests.id, requestId));
+
+  if (input.status !== "approved" || !request.patientId) {
+    return { status: input.status as "approved" | "rejected", invitation: undefined };
+  }
+
+  const invitation = await createPatientPortalInvitation(
+    request.patientId,
+    input.reviewedByUserId,
+  );
+  return { status: "approved" as const, invitation };
+}
+
+export async function revokePatientPortalInvitation(invitationId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(patientPortalInvitations)
+    .set({ status: "revoked", revokedAt: new Date() })
+    .where(
+      and(
+        eq(patientPortalInvitations.id, invitationId),
+        eq(patientPortalInvitations.status, "pending"),
+      ),
+    );
 }

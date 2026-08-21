@@ -374,7 +374,7 @@ export type UserWithRole = User;
 export const auditLogs = mysqlTable("auditLogs", {
   id: int("id").autoincrement().primaryKey(),
   actorUserId: int("actorUserId"),
-  actorRole: mysqlEnum("actorRole", ["admin", "dentist", "receptionist", "staff"]),
+  actorRole: mysqlEnum("actorRole", ["admin", "dentist", "receptionist", "staff", "patient"]),
   action: varchar("action", { length: 32 }).notNull(),
   resourceType: varchar("resourceType", { length: 64 }).notNull(),
   resourceId: varchar("resourceId", { length: 64 }),
@@ -504,3 +504,64 @@ export const patientDocuments = mysqlTable("patientDocuments", {
 
 export type PatientDocument = typeof patientDocuments.$inferSelect;
 export type InsertPatientDocument = typeof patientDocuments.$inferInsert;
+
+export const patientHealthForms = mysqlTable("patientHealthForms", {
+  id: int("id").autoincrement().primaryKey(),
+  patientId: int("patientId").notNull(),
+  formVersion: varchar("formVersion", { length: 32 }).notNull(),
+  status: mysqlEnum("status", ["draft", "completed", "superseded"])
+    .default("draft")
+    .notNull(),
+  responses: text("responses").notNull(),
+  consentAcknowledged: boolean("consentAcknowledged").default(false).notNull(),
+  completedAt: timestamp("completedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type PatientHealthForm = typeof patientHealthForms.$inferSelect;
+export type InsertPatientHealthForm = typeof patientHealthForms.$inferInsert;
+
+/** Single-use links that connect an existing clinic patient to a portal account. */
+export const patientPortalInvitations = mysqlTable("patientPortalInvitations", {
+  id: int("id").autoincrement().primaryKey(),
+  patientId: int("patientId").notNull(),
+  tokenHash: varchar("tokenHash", { length: 64 }).notNull().unique(),
+  status: mysqlEnum("status", ["pending", "claimed", "expired", "revoked"])
+    .default("pending")
+    .notNull(),
+  invitedByUserId: int("invitedByUserId").notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  claimedAt: timestamp("claimedAt"),
+  claimedByUserId: int("claimedByUserId"),
+  revokedAt: timestamp("revokedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type PatientPortalInvitation = typeof patientPortalInvitations.$inferSelect;
+export type InsertPatientPortalInvitation = typeof patientPortalInvitations.$inferInsert;
+
+/** Staff-reviewed recovery requests for lost invitations. */
+export const patientPortalRecoveryRequests = mysqlTable("patientPortalRecoveryRequests", {
+  id: int("id").autoincrement().primaryKey(),
+  patientId: int("patientId"),
+  requestedEmail: varchar("requestedEmail", { length: 320 }),
+  requestedPhone: varchar("requestedPhone", { length: 32 }),
+  firstName: varchar("firstName", { length: 128 }).notNull(),
+  lastName: varchar("lastName", { length: 128 }).notNull(),
+  dateOfBirth: varchar("dateOfBirth", { length: 10 }),
+  status: mysqlEnum("status", ["pending", "approved", "rejected", "cancelled"])
+    .default("pending")
+    .notNull(),
+  verificationMethod: varchar("verificationMethod", { length: 128 }),
+  verificationNote: text("verificationNote"),
+  reviewedByUserId: int("reviewedByUserId"),
+  reviewedAt: timestamp("reviewedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type PatientPortalRecoveryRequest = typeof patientPortalRecoveryRequests.$inferSelect;
+export type InsertPatientPortalRecoveryRequest = typeof patientPortalRecoveryRequests.$inferInsert;
+

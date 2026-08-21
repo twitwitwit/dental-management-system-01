@@ -23,6 +23,9 @@ import PatientRegistration from "./pages/PatientRegistration";
 import PatientLogin from "./pages/PatientLogin";
 import PatientPortal from "./pages/PatientPortal";
 import PatientVerification from "./pages/PatientVerification";
+import PatientPortalClaim from "./pages/PatientPortalClaim";
+import PatientPortalRecovery from "./pages/PatientPortalRecovery";
+import PatientHealthForm from "./pages/PatientHealthForm";
 function useModuleGate(moduleId: string) {
   const role = useCurrentRole();
   return { canAccessCheck: canAccess(role, moduleId) };
@@ -81,6 +84,9 @@ function Router() {
       </Route>
       <Route path="/patient/register" component={PatientRegistration} />
       <Route path="/patient/login" component={PatientLogin} />
+      <Route path="/patient/claim" component={PatientPortalClaim} />
+      <Route path="/patient/recover" component={PatientPortalRecovery} />
+      <Route path="/patient/health-form">{() => <PatientHealthForm />}</Route>
       <Route path="/patient" component={PatientPortal} />
       <ModuleRoute
         path="/patient-verification"

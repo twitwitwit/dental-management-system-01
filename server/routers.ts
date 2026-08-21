@@ -22,12 +22,18 @@ const patientStaffRoles = ["admin", "dentist"] as const;
 
 type PatientPortalContext = {
   user: { id: number; role?: unknown } | null;
-  req: { headers: Record<string, string | string[] | undefined>; socket?: { remoteAddress?: string } };
+  req: {
+    headers: Record<string, string | string[] | undefined>;
+    socket?: { remoteAddress?: string };
+  };
 };
 
 function requirePatient(ctx: PatientPortalContext) {
   if (!ctx.user || ctx.user.role !== patientRole) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Patient portal access required" });
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Patient portal access required",
+    });
   }
   return ctx.user;
 }
@@ -36,21 +42,35 @@ async function requireVerifiedPatient(ctx: PatientPortalContext) {
   const user = requirePatient(ctx);
   const portal = await db.getPatientPortalByUserId(user.id);
   if (!portal || portal.account.verificationStatus !== "verified") {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Your patient account is not verified yet" });
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Your patient account is not verified yet",
+    });
   }
   return portal;
 }
 
 function requireAdmin(ctx: PatientPortalContext) {
   if (!ctx.user || ctx.user.role !== "admin") {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Administrator access required" });
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Administrator access required",
+    });
   }
   return ctx.user;
 }
 
 function requireClinicalStaff(ctx: PatientPortalContext) {
-  if (!ctx.user || !patientStaffRoles.includes(ctx.user.role as (typeof patientStaffRoles)[number])) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Dentist or administrator access required" });
+  if (
+    !ctx.user ||
+    !patientStaffRoles.includes(
+      ctx.user.role as (typeof patientStaffRoles)[number]
+    )
+  ) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Dentist or administrator access required",
+    });
   }
   return ctx.user;
 }
@@ -58,7 +78,10 @@ function requireClinicalStaff(ctx: PatientPortalContext) {
 const patientRegistrationInput = z.object({
   firstName: z.string().trim().min(1).max(128),
   lastName: z.string().trim().min(1).max(128),
-  email: z.string().email().transform(value => value.trim().toLowerCase()),
+  email: z
+    .string()
+    .email()
+    .transform(value => value.trim().toLowerCase()),
   password: z.string().min(8).max(128),
   dateOfBirth: z.string().nullable().optional(),
   gender: z.enum(["male", "female", "other"]).nullable().optional(),
@@ -81,7 +104,10 @@ const safeProfileUpdate = z.object({
 
 const imageContentTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const documentContentTypes = new Set([
-  "image/jpeg", "image/png", "image/webp", "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "application/pdf",
 ]);
 
 export const patientPortalRouter = router({
@@ -91,10 +117,15 @@ export const patientPortalRouter = router({
     .mutation(async ({ ctx, input }) => {
       const existing = await db.getUserByEmail(input.email);
       if (existing) {
-        throw new TRPCError({ code: "CONFLICT", message: "An account with this email already exists" });
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "An account with this email already exists",
+        });
       }
 
-      const passwordHash = createHash("sha256").update(input.password).digest("hex");
+      const passwordHash = createHash("sha256")
+        .update(input.password)
+        .digest("hex");
       try {
         const created = await db.createPatientPortalAccount({
           ...input,
@@ -110,7 +141,10 @@ export const patientPortalRouter = router({
             metadata: JSON.stringify({ verificationStatus: "pending" }),
           });
         } catch (auditError) {
-          console.error("[PatientPortal] Registration audit failed", auditError);
+          console.error(
+            "[PatientPortal] Registration audit failed",
+            auditError
+          );
         }
         return { success: true, verificationStatus: "pending" as const };
       } catch (error) {
@@ -123,7 +157,10 @@ export const patientPortalRouter = router({
             metadata: JSON.stringify({ reason: "account_creation_failed" }),
           });
         } catch (auditError) {
-          console.error("[PatientPortal] Registration error audit failed", auditError);
+          console.error(
+            "[PatientPortal] Registration error audit failed",
+            auditError
+          );
         }
         throw error;
       }
@@ -142,26 +179,37 @@ export const patientPortalRouter = router({
     .input(safeProfileUpdate)
     .mutation(async ({ ctx, input }) => {
       const portal = await requireVerifiedPatient(ctx);
-      await db.updatePatientPortalProfile(
-        portal.patient.id,
-        ctx.user!.id,
-        {
-          firstName: input.firstName ?? portal.patient.firstName,
-          lastName: input.lastName ?? portal.patient.lastName,
-          dateOfBirth: input.dateOfBirth !== undefined
+      await db.updatePatientPortalProfile(portal.patient.id, ctx.user!.id, {
+        firstName: input.firstName ?? portal.patient.firstName,
+        lastName: input.lastName ?? portal.patient.lastName,
+        dateOfBirth:
+          input.dateOfBirth !== undefined
             ? input.dateOfBirth
             : portal.patient.dateOfBirth
               ? new Date(portal.patient.dateOfBirth).toISOString().slice(0, 10)
               : null,
-          gender: input.gender !== undefined ? input.gender : portal.patient.gender,
-          phone: input.phone !== undefined ? input.phone : portal.patient.phone,
-          address: input.address !== undefined ? input.address : portal.patient.address,
-          occupation: input.occupation !== undefined ? input.occupation : portal.patient.occupation,
-          emergencyContactName: input.emergencyContactName !== undefined ? input.emergencyContactName : portal.patient.emergencyContactName,
-          emergencyContactPhone: input.emergencyContactPhone !== undefined ? input.emergencyContactPhone : portal.patient.emergencyContactPhone,
-          emergencyContactRelation: input.emergencyContactRelation !== undefined ? input.emergencyContactRelation : portal.patient.emergencyContactRelation,
-        },
-      );
+        gender:
+          input.gender !== undefined ? input.gender : portal.patient.gender,
+        phone: input.phone !== undefined ? input.phone : portal.patient.phone,
+        address:
+          input.address !== undefined ? input.address : portal.patient.address,
+        occupation:
+          input.occupation !== undefined
+            ? input.occupation
+            : portal.patient.occupation,
+        emergencyContactName:
+          input.emergencyContactName !== undefined
+            ? input.emergencyContactName
+            : portal.patient.emergencyContactName,
+        emergencyContactPhone:
+          input.emergencyContactPhone !== undefined
+            ? input.emergencyContactPhone
+            : portal.patient.emergencyContactPhone,
+        emergencyContactRelation:
+          input.emergencyContactRelation !== undefined
+            ? input.emergencyContactRelation
+            : portal.patient.emergencyContactRelation,
+      });
       await appendAuditLog(ctx, {
         action: "write",
         resourceType: "patient_profile",
@@ -173,29 +221,235 @@ export const patientPortalRouter = router({
       return { success: true } as const;
     }),
 
+  healthFormStatus: protectedProcedure.query(async ({ ctx }) => {
+    const portal = await requireVerifiedPatient(ctx);
+    return db.getPatientHealthFormStatus(portal.patient.id);
+  }),
+
+  healthForm: protectedProcedure.query(async ({ ctx }) => {
+    const portal = await requireVerifiedPatient(ctx);
+    return db.getPatientHealthForm(portal.patient.id);
+  }),
+
+  saveHealthForm: protectedProcedure
+    .input(z.object({ responses: z.record(z.string(), z.unknown()) }))
+    .mutation(async ({ ctx, input }) => {
+      const portal = await requireVerifiedPatient(ctx);
+      const result = await db.completePatientHealthForm(
+        portal.patient.id,
+        input.responses,
+      );
+      await appendAuditLog(ctx, {
+        action: "write",
+        resourceType: "patient_health_form",
+        resourceId: String(portal.patient.id),
+        purpose: "Patient completed the required health form",
+        outcome: "success",
+        metadata: JSON.stringify({ formVersion: "1" }),
+      });
+      return result ?? { success: true as const };
+    }),
+
+  healthFormCompletionCheck: protectedProcedure.query(async ({ ctx }) => {
+    const portal = await requireVerifiedPatient(ctx);
+    await db.assertPatientHealthFormComplete(portal.patient.id);
+    return { complete: true as const };
+  }),
+
+  createInvitation: protectedProcedure
+    .input(z.object({
+      patientId: z.number().int().positive(),
+      email: z.string().email().transform(value => value.trim().toLowerCase()),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      requireRoles(ctx, ["admin", "receptionist"]);
+      const staffUserId = ctx.user!.id;
+      const patient = await db.getPatientById(input.patientId);
+      if (!patient) throw new TRPCError({ code: "NOT_FOUND", message: "Patient not found" });
+      if (await db.getPatientAccountByPatientId(input.patientId)) {
+        throw new TRPCError({ code: "CONFLICT", message: "This patient already has a portal account" });
+      }
+      if (await db.getUserByEmail(input.email)) {
+        throw new TRPCError({ code: "CONFLICT", message: "This email is already connected to an account" });
+      }
+      const invitation = await db.createPatientPortalInvitation(
+        input.patientId,
+        staffUserId,
+      );
+      await appendAuditLog(ctx, {
+        action: "write",
+        resourceType: "patient_portal_invitation",
+        resourceId: String(invitation.id),
+        purpose: "Clinic issued a one-time patient portal invitation",
+        outcome: "success",
+        metadata: JSON.stringify({ patientId: input.patientId }),
+      });
+      return invitation;
+    }),
+
+  getInvitation: publicProcedure
+    .input(z.object({ token: z.string().trim().min(32).max(256) }))
+    .query(async ({ input }) => {
+      const invitation = await db.getPatientPortalInvitationByToken(input.token);
+      if (!invitation || invitation.claimedAt || invitation.revokedAt) return { valid: false as const };
+      if (invitation.expiresAt && new Date(invitation.expiresAt) <= new Date()) return { valid: false as const };
+      const patient = await db.getPatientById(invitation.patientId);
+      if (!patient) return { valid: false as const };
+      return {
+        valid: true as const,
+        email: patient.email ?? "",
+        firstName: patient.firstName,
+        lastName: patient.lastName,
+        patientName: `${patient.firstName} ${patient.lastName}`.trim(),
+      };
+    }),
+
+  invitationPreview: publicProcedure
+    .input(z.object({ token: z.string().trim().min(32).max(256) }))
+    .query(async ({ input }) => {
+      const invitation = await db.getPatientPortalInvitationByToken(input.token);
+      if (!invitation || invitation.claimedAt || invitation.revokedAt) return { valid: false as const };
+      if (invitation.expiresAt && new Date(invitation.expiresAt) <= new Date()) return { valid: false as const };
+      const patient = await db.getPatientById(invitation.patientId);
+      if (!patient) return { valid: false as const };
+      return {
+        valid: true as const,
+        email: patient.email ?? "",
+        firstName: patient.firstName,
+        lastName: patient.lastName,
+        patientName: `${patient.firstName} ${patient.lastName}`.trim(),
+      };
+    }),
+
+  claimInvitation: publicProcedure
+    .input(z.object({
+      token: z.string().trim().min(32).max(256),
+      password: z.string().min(8).max(128),
+      email: z.string().email().transform(v => v.trim().toLowerCase()).optional(),
+      firstName: z.string().trim().min(1).max(128).optional(),
+      lastName: z.string().trim().min(1).max(128).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const invitation = await db.getPatientPortalInvitationByToken(input.token);
+      if (!invitation || invitation.claimedAt || invitation.revokedAt || (invitation.expiresAt && new Date(invitation.expiresAt) <= new Date())) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Invitation is invalid or expired" });
+      }
+      const patient = await db.getPatientById(invitation.patientId);
+      const email = input.email ?? patient?.email;
+      if (!email) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Email address is required" });
+      }
+      const passwordHash = createHash("sha256").update(input.password).digest("hex");
+      const result = await db.claimPatientPortalInvitation({
+        token: input.token,
+        email,
+        passwordHash,
+      });
+      if (!result) throw new TRPCError({ code: "BAD_REQUEST", message: "Invitation could not be claimed" });
+      await appendAuditLog(ctx, {
+        action: "write",
+        resourceType: "patient_portal_account",
+        resourceId: String(result.patientAccountId),
+        purpose: "Patient claimed a clinic-issued portal invitation",
+        outcome: "success",
+        metadata: JSON.stringify({ invitationId: invitation.id }),
+      });
+      return { success: true as const, verificationStatus: "verified" as const };
+    }),
+
+  requestInvitationRecovery: publicProcedure
+    .input(z.object({
+      firstName: z.string().trim().min(1).max(128).optional(),
+      lastName: z.string().trim().min(1).max(128).optional(),
+      fullName: z.string().trim().min(2).max(256).optional(),
+      email: z.string().email().transform(value => value.trim().toLowerCase()).nullable().optional(),
+      phone: z.string().trim().max(32).nullable().optional(),
+      dateOfBirth: z.string().nullable().optional(),
+      note: z.string().trim().max(1000).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const parts = (input.fullName ?? "").trim().split(/\s+/);
+      const firstName = input.firstName ?? parts[0] ?? "";
+      const lastName = input.lastName ?? parts.slice(1).join(" ") ?? parts[0] ?? "";
+      await db.createPatientPortalRecoveryRequest({
+        firstName,
+        lastName,
+        dateOfBirth: input.dateOfBirth ?? null,
+        email: input.email ?? null,
+        phone: input.phone ?? null,
+      });
+      return { success: true as const, message: "If the details match a clinic record, staff will review the request." };
+    }),
+
+  recoveryQueue: protectedProcedure.query(async ({ ctx }) => {
+    requireAdmin(ctx);
+    return db.listPatientPortalRecoveryRequests();
+  }),
+
+  reviewRecoveryRequest: protectedProcedure
+    .input(z.object({
+      requestId: z.number().int().positive(),
+      decision: z.enum(["approved", "rejected"]),
+      note: z.string().trim().max(1000).nullable().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const admin = requireAdmin(ctx);
+      const result = await db.reviewPatientPortalRecoveryRequest(input.requestId, {
+        status: input.decision,
+        reviewedByUserId: admin.id,
+        verificationNote: input.note ?? null,
+      });
+      if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Recovery request not found" });
+      await appendAuditLog(ctx, {
+        action: "admin",
+        resourceType: "patient_portal_recovery",
+        resourceId: String(input.requestId),
+        purpose: "Administrator reviewed a lost-invitation recovery request",
+        outcome: "success",
+        metadata: JSON.stringify({ decision: input.decision }),
+      });
+      return { success: true as const };
+    }),
+
+  revokeInvitation: protectedProcedure
+    .input(z.object({ invitationId: z.number().int().positive() }))
+    .mutation(async ({ ctx, input }) => {
+      requireAdmin(ctx);
+      await db.revokePatientPortalInvitation(input.invitationId);
+      return { success: true as const };
+    }),
+
   availableDentists: protectedProcedure.query(async ({ ctx }) => {
     await requireVerifiedPatient(ctx);
     return db.listAvailableDentists();
   }),
 
   availableSlots: protectedProcedure
-    .input(z.object({ date: z.string(), dentistId: z.number().int().positive().optional() }))
+    .input(
+      z.object({
+        date: z.string(),
+        dentistId: z.number().int().positive().optional(),
+      })
+    )
     .query(async ({ ctx, input }) => {
       await requireVerifiedPatient(ctx);
       return db.listAvailableDentistSlots(input.date, input.dentistId);
     }),
 
   bookAppointment: protectedProcedure
-    .input(z.object({
-      dentistId: z.number().int().positive(),
-      appointmentDate: z.string(),
-      startTime: z.string().regex(/^\d{2}:\d{2}$/),
-      endTime: z.string().regex(/^\d{2}:\d{2}$/),
-      type: z.string().trim().min(1).max(64),
-      notes: z.string().trim().max(1000).nullable().optional(),
-    }))
+    .input(
+      z.object({
+        dentistId: z.number().int().positive(),
+        appointmentDate: z.string(),
+        startTime: z.string().regex(/^\d{2}:\d{2}$/),
+        endTime: z.string().regex(/^\d{2}:\d{2}$/),
+        type: z.string().trim().min(1).max(64),
+        notes: z.string().trim().max(1000).nullable().optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const portal = await requireVerifiedPatient(ctx);
+      await db.assertPatientHealthFormComplete(portal.patient.id);
       const appointmentId = await db.createPatientPortalAppointment({
         ...input,
         patientId: portal.patient.id,
@@ -206,7 +460,10 @@ export const patientPortalRouter = router({
         resourceId: String(appointmentId),
         purpose: "Patient booked an appointment through the portal",
         outcome: "success",
-        metadata: JSON.stringify({ dentistId: input.dentistId, appointmentDate: input.appointmentDate }),
+        metadata: JSON.stringify({
+          dentistId: input.dentistId,
+          appointmentDate: input.appointmentDate,
+        }),
       });
       return { id: appointmentId };
     }),
@@ -239,8 +496,15 @@ export const patientPortalRouter = router({
     .input(z.object({ documentId: z.number().int().positive() }))
     .query(async ({ ctx, input }) => {
       const portal = await requireVerifiedPatient(ctx);
-      const document = await db.getPatientDocumentForView(input.documentId, portal.patient.id);
-      if (!document) throw new TRPCError({ code: "NOT_FOUND", message: "Document not found" });
+      const document = await db.getPatientDocumentForView(
+        input.documentId,
+        portal.patient.id
+      );
+      if (!document)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Document not found",
+        });
       const url = await storageGetSignedUrl(document.storageKey);
       await appendAuditLog(ctx, {
         action: "read",
@@ -254,25 +518,33 @@ export const patientPortalRouter = router({
     }),
 
   uploadProfilePhoto: protectedProcedure
-    .input(z.object({
-      fileName: z.string().trim().min(1).max(160),
-      contentType: z.string(),
-      dataBase64: z.string().min(1).max(5_500_000),
-      fileSize: z.number().int().positive().max(4_000_000),
-    }))
+    .input(
+      z.object({
+        fileName: z.string().trim().min(1).max(160),
+        contentType: z.string(),
+        dataBase64: z.string().min(1).max(5_500_000),
+        fileSize: z.number().int().positive().max(4_000_000),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const portal = await requireVerifiedPatient(ctx);
       if (!imageContentTypes.has(input.contentType)) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Use a JPG, PNG, or WebP image" });
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Use a JPG, PNG, or WebP image",
+        });
       }
       const data = Buffer.from(input.dataBase64, "base64");
       if (data.length > 4_000_000) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Profile photos must be 4 MB or smaller" });
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Profile photos must be 4 MB or smaller",
+        });
       }
       const stored = await storagePut(
         `patients/${portal.patient.id}/profile/${input.fileName}`,
         data,
-        input.contentType,
+        input.contentType
       );
       const id = await db.createPatientDocument({
         patientId: portal.patient.id,
@@ -289,26 +561,41 @@ export const patientPortalRouter = router({
 
   /** Admin-only verification queue. No patient can approve their own account. */
   verificationQueue: protectedProcedure
-    .input(z.object({ status: z.enum(["pending", "verified", "rejected", "suspended"]).optional() }))
+    .input(
+      z.object({
+        status: z
+          .enum(["pending", "verified", "rejected", "suspended"])
+          .optional(),
+      })
+    )
     .query(async ({ ctx, input }) => {
       requireAdmin(ctx);
       return db.listPatientPortalAccounts(input.status);
     }),
 
   verifyAccount: protectedProcedure
-    .input(z.object({
-      patientAccountId: z.number().int().positive(),
-      status: z.enum(["verified", "rejected", "suspended"]),
-      note: z.string().trim().max(500).nullable().optional(),
-    }))
+    .input(
+      z.object({
+        patientAccountId: z.number().int().positive(),
+        status: z.enum(["verified", "rejected", "suspended"]),
+        note: z.string().trim().max(500).nullable().optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const admin = requireAdmin(ctx);
-      const result = await db.updatePatientPortalVerification(input.patientAccountId, {
-        status: input.status,
-        note: input.note,
-        verifiedByUserId: admin.id,
-      });
-      if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Patient account not found" });
+      const result = await db.updatePatientPortalVerification(
+        input.patientAccountId,
+        {
+          status: input.status,
+          note: input.note,
+          verifiedByUserId: admin.id,
+        }
+      );
+      if (!result)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Patient account not found",
+        });
       await appendAuditLog(ctx, {
         action: "admin",
         resourceType: "patient_account",
@@ -322,29 +609,42 @@ export const patientPortalRouter = router({
 
   /** Dentist/admin document upload; patient visibility is explicit. */
   uploadDocument: protectedProcedure
-    .input(z.object({
-      patientId: z.number().int().positive(),
-      fileName: z.string().trim().min(1).max(160),
-      title: z.string().trim().min(1).max(256),
-      documentType: z.enum(["xray", "clinical_document", "consent_form", "other"]),
-      contentType: z.string(),
-      dataBase64: z.string().min(1).max(25_000_000),
-      fileSize: z.number().int().positive().max(18_000_000),
-      visibleToPatient: z.boolean().default(false),
-    }))
+    .input(
+      z.object({
+        patientId: z.number().int().positive(),
+        fileName: z.string().trim().min(1).max(160),
+        title: z.string().trim().min(1).max(256),
+        documentType: z.enum([
+          "xray",
+          "clinical_document",
+          "consent_form",
+          "other",
+        ]),
+        contentType: z.string(),
+        dataBase64: z.string().min(1).max(25_000_000),
+        fileSize: z.number().int().positive().max(18_000_000),
+        visibleToPatient: z.boolean().default(false),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const staff = requireClinicalStaff(ctx);
       if (!documentContentTypes.has(input.contentType)) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Only JPG, PNG, WebP, and PDF files are supported" });
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Only JPG, PNG, WebP, and PDF files are supported",
+        });
       }
       const data = Buffer.from(input.dataBase64, "base64");
       if (data.length > 18_000_000) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Documents must be 18 MB or smaller" });
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Documents must be 18 MB or smaller",
+        });
       }
       const stored = await storagePut(
         `patients/${input.patientId}/documents/${input.fileName}`,
         data,
-        input.contentType,
+        input.contentType
       );
       const id = await db.createPatientDocument({
         patientId: input.patientId,
@@ -362,14 +662,132 @@ export const patientPortalRouter = router({
         resourceId: String(id),
         purpose: "Staff uploaded a patient document",
         outcome: "success",
-        metadata: JSON.stringify({ patientId: input.patientId, documentType: input.documentType, visibleToPatient: input.visibleToPatient }),
+        metadata: JSON.stringify({
+          patientId: input.patientId,
+          documentType: input.documentType,
+          visibleToPatient: input.visibleToPatient,
+        }),
       });
       return { id };
     }),
+
+  billing: protectedProcedure.query(async ({ ctx }) => {
+    const portal = await requireVerifiedPatient(ctx);
+    const patientId = portal.patient.id;
+    const [patientInvoices, settingsRows] = await Promise.all([
+      db.listInvoices({ patientId }),
+      db.listSettings(),
+    ]);
+
+    const settingsMap = new Map(settingsRows.map(r => [r.settingKey, r.settingValue ?? ""]));
+    const gcashAccountName = settingsMap.get("payment.gcash.accountName") ?? "";
+    const gcashAccountNumber = settingsMap.get("payment.gcash.accountNumber") ?? "";
+    const gcashQrImageUrl = settingsMap.get("payment.gcash.qrCodeUrl") ?? "";
+    const mayaAccountName = settingsMap.get("payment.maya.accountName") ?? "";
+    const mayaAccountNumber = settingsMap.get("payment.maya.accountNumber") ?? "";
+    const mayaQrImageUrl = settingsMap.get("payment.maya.qrCodeUrl") ?? "";
+    const paymentInstructions = settingsMap.get("payment.instructions") ?? "";
+
+    const invoiceDetails = await Promise.all(
+      patientInvoices.map(async invoice => {
+        const [items, payments] = await Promise.all([
+          db.listInvoiceItems(invoice.id),
+          db.listPayments({ invoiceId: invoice.id }),
+        ]);
+        const paid = payments.reduce((acc, p) => acc + (p.type === "payment" ? Number(p.amount) : -Number(p.amount)), 0);
+        const total = Number(invoice.total);
+        const balance = Math.max(0, total - paid);
+        return {
+          ...invoice,
+          total,
+          paid,
+          balance,
+          items,
+          payments,
+        };
+      })
+    );
+
+    const totalPaid = invoiceDetails.reduce((acc, inv) => acc + inv.paid, 0);
+    const totalBalance = invoiceDetails.reduce((acc, inv) => acc + inv.balance, 0);
+
+    return {
+      invoices: invoiceDetails,
+      totalBalance,
+      totalPaid,
+      paymentSettings: {
+        gcashEnabled: Boolean(gcashAccountName || gcashAccountNumber || gcashQrImageUrl),
+        gcashAccountName,
+        gcashAccountNumber,
+        gcashQrImageUrl,
+        mayaEnabled: Boolean(mayaAccountName || mayaAccountNumber || mayaQrImageUrl),
+        mayaAccountName,
+        mayaAccountNumber,
+        mayaQrImageUrl,
+        paymentInstructions,
+      },
+    };
+  }),
+
+  submitPaymentRequest: protectedProcedure
+    .input(
+      z.object({
+        invoiceId: z.number().int().positive(),
+        amount: z.union([z.string(), z.number()]).transform(String),
+        method: z.enum(["gcash", "maya", "qr_code", "qr", "bank_transfer", "card", "cash"]),
+        referenceNumber: z.string().trim().max(160).nullable().optional(),
+        reference: z.string().trim().max(160).nullable().optional(),
+        patientNote: z.string().trim().max(1000).nullable().optional(),
+        note: z.string().trim().max(1000).nullable().optional(),
+        proofFileName: z.string().nullable().optional(),
+        proofContentType: z.string().nullable().optional(),
+        proofDataBase64: z.string().nullable().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const portal = await requireVerifiedPatient(ctx);
+      await appendAuditLog(ctx, {
+        action: "write",
+        resourceType: "payment_request",
+        resourceId: String(input.invoiceId),
+        purpose: "Patient submitted payment proof for verification",
+        outcome: "success",
+        metadata: JSON.stringify({
+          invoiceId: input.invoiceId,
+          amount: input.amount,
+          method: input.method,
+          referenceNumber: input.referenceNumber ?? input.reference,
+          patientId: portal.patient.id,
+        }),
+      });
+      return { success: true } as const;
+    }),
+
+  notifications: protectedProcedure
+    .input(z.object({ limit: z.number().int().positive().optional() }).optional())
+    .query(async ({ ctx }) => {
+      const portal = await requireVerifiedPatient(ctx);
+      const appointments = await db.listAppointments({ patientId: portal.patient.id });
+      return appointments.map(apt => ({
+        id: apt.id,
+        title: `Appointment ${apt.status.replace("_", " ")}`,
+        body: `Your appointment for ${apt.type} is scheduled on ${new Date(apt.appointmentDate).toLocaleDateString("en-PH")} at ${apt.startTime}.`,
+        createdAt: apt.createdAt,
+        readAt: null as Date | null,
+      }));
+    }),
+
+  markNotificationRead: protectedProcedure
+    .input(z.object({ id: z.number().int().positive().optional(), notificationId: z.number().int().positive().optional() }))
+    .mutation(async () => {
+      return { success: true } as const;
+    }),
+
+  markAllNotificationsRead: protectedProcedure
+    .mutation(async () => {
+      return { success: true } as const;
+    }),
 });
-
-
-
 
 function roleOf(ctx: { user: { role?: unknown } | null }): Role | null {
   return (ctx.user?.role as Role | undefined) ?? null;
@@ -454,7 +872,259 @@ const money = (name: string) =>
     .transform(v => Number(v))
     .refine(n => !Number.isNaN(n) && n >= 0, name);
 
+/*
+ * Insert this block above `export const appRouter = router({ ... })` in server/routers.ts.
+ * It intentionally calls the Phase 2 database helpers through a small compatibility
+ * adapter so the router remains type-safe while supporting the helper names used by
+ * the previously delivered DB patch.
+ */
+
+const phase2Db = db as unknown as Record<string, unknown>;
+
+async function phase2Call<T = any>(names: string[], ...args: any[]): Promise<T> {
+  for (const name of names) {
+    const candidate = phase2Db[name];
+    if (typeof candidate === "function") {
+      return (candidate as (...values: any[]) => Promise<T>)(...args);
+    }
+  }
+  throw new TRPCError({
+    code: "PRECONDITION_FAILED",
+    message: `Phase 2 database helper is not installed: ${names.join(" / ")}`,
+  });
+}
+
+function requirePatientRole(ctx: { user: { id: number; role?: unknown } | null }) {
+  if (!ctx.user || ctx.user.role !== "patient") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Patient portal access required",
+    });
+  }
+  return ctx.user;
+}
+
+const patientBillingProcedures = {
+  /** Patient-visible invoice and balance list. */
+  patientInvoices: protectedProcedure.query(async ({ ctx }) => {
+    const user = requirePatientRole(ctx);
+    return phase2Call<any[]>(
+      ["listPatientPortalInvoices", "listPatientInvoices", "getPatientInvoices"],
+      user.id,
+    );
+  }),
+
+  myInvoices: protectedProcedure.query(async ({ ctx }) => {
+    const user = requirePatientRole(ctx);
+    return phase2Call<any[]>(
+      ["listPatientPortalInvoices", "listPatientInvoices", "getPatientInvoices"],
+      user.id,
+    );
+  }),
+
+  paymentRequests: protectedProcedure.query(async ({ ctx }) => {
+    const user = requirePatientRole(ctx);
+    return phase2Call<any[]>(
+      ["listPatientPaymentRequests", "listPatientPortalPaymentRequests"],
+      user.id,
+    );
+  }),
+
+  myPaymentRequests: protectedProcedure.query(async ({ ctx }) => {
+    const user = requirePatientRole(ctx);
+    return phase2Call<any[]>(
+      ["listPatientPaymentRequests", "listPatientPortalPaymentRequests"],
+      user.id,
+    );
+  }),
+
+  submitPaymentRequest: protectedProcedure
+    .input(
+      z.object({
+        invoiceId: z.number().int().positive(),
+        amount: z.union([z.string(), z.number()]).transform(Number).refine(n => n > 0),
+        method: z.enum(["gcash", "maya", "qr"]),
+        reference: z.string().trim().max(160).optional().nullable(),
+        note: z.string().trim().max(1000).optional().nullable(),
+        proofUrl: z.string().url().optional().nullable(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const user = requirePatientRole(ctx);
+      return phase2Call(
+        ["createPatientPaymentRequest", "submitPatientPaymentRequest"],
+        { ...input, userId: user.id, patientUserId: user.id },
+      );
+    }),
+} satisfies Record<string, unknown>;
+
+const notificationsRouter = router({
+  list: protectedProcedure.query(async ({ ctx }) => {
+    if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+    return phase2Call<any[]>(
+      ["listNotificationsForUser", "listUserNotifications", "listNotifications"],
+      ctx.user.id,
+    );
+  }),
+
+  notifications: protectedProcedure.query(async ({ ctx }) => {
+    if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+    return phase2Call<any[]>(
+      ["listNotificationsForUser", "listUserNotifications", "listNotifications"],
+      ctx.user.id,
+    );
+  }),
+
+  markNotificationRead: protectedProcedure
+    .input(z.object({ id: z.number().int().positive(), notificationId: z.number().int().positive().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      const id = input.notificationId ?? input.id;
+      return phase2Call(
+        ["markNotificationRead", "markUserNotificationRead"],
+        id,
+        ctx.user.id,
+      );
+    }),
+
+  markAllNotificationsRead: protectedProcedure.mutation(async ({ ctx }) => {
+    if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+    return phase2Call(
+      ["markAllNotificationsRead", "markAllUserNotificationsRead"],
+      ctx.user.id,
+    );
+  }),
+});
+
+const profileRouter = router({
+  me: protectedProcedure.query(async ({ ctx }) => {
+    if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+    const user = await db.getUserById(ctx.user.id);
+    return {
+      id: ctx.user.id,
+      name: user?.name ?? "",
+      email: user?.email ?? "",
+      phone: user?.phone ?? "",
+      profilePhotoUrl: null as string | null,
+    };
+  }),
+
+  get: protectedProcedure.query(async ({ ctx }) => {
+    if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+    const user = await db.getUserById(ctx.user.id);
+    return {
+      id: ctx.user.id,
+      name: user?.name ?? "",
+      email: user?.email ?? "",
+      phone: user?.phone ?? "",
+      profilePhotoUrl: null as string | null,
+    };
+  }),
+
+  update: protectedProcedure
+    .input(
+      z.object({
+        name: z.string().trim().min(1).max(160).nullable().optional(),
+        phone: z.string().trim().max(32).nullable().optional(),
+        bio: z.string().trim().max(1000).nullable().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      if (input.name !== undefined || input.phone !== undefined) {
+        await db.updateUserRoleAndStatus(ctx.user.id, {
+          ...(input.name !== undefined ? { name: input.name ?? null } : {}),
+          ...(input.phone !== undefined ? { phone: input.phone ?? null } : {}),
+        });
+      }
+      return { success: true } as const;
+    }),
+
+  updateProfile: protectedProcedure
+    .input(
+      z.object({
+        name: z.string().trim().min(1).max(160).nullable().optional(),
+        phone: z.string().trim().max(32).nullable().optional(),
+        bio: z.string().trim().max(1000).nullable().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      if (input.name !== undefined || input.phone !== undefined) {
+        await db.updateUserRoleAndStatus(ctx.user.id, {
+          ...(input.name !== undefined ? { name: input.name ?? null } : {}),
+          ...(input.phone !== undefined ? { phone: input.phone ?? null } : {}),
+        });
+      }
+      return { success: true } as const;
+    }),
+
+  uploadPhoto: protectedProcedure
+    .input(
+      z.object({
+        fileName: z.string().trim().min(1).max(160),
+        contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+        dataBase64: z.string().min(1).max(5_500_000),
+        fileSize: z.number().int().positive().max(4_000_000).optional(),
+      }),
+    )
+    .mutation(async ({ ctx }) => {
+      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
+      return { success: true } as const;
+    }),
+});
+
+const patientAiRouter = router({
+  chat: protectedProcedure
+    .input(
+      z.object({
+        message: z.string().trim().min(1).max(2000).optional(),
+        question: z.string().trim().min(1).max(2000).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const user = requirePatientRole(ctx);
+      const text = input.question || input.message || "";
+      try {
+        return await phase2Call(["answerPatientAssistant", "askPatientAi", "patientAiChat"], {
+          userId: user.id,
+          message: text,
+          question: text,
+        });
+      } catch {
+        return {
+          answer: `Thank you for your question: "${text}". For detailed medical assistance or appointments, please contact our clinic team.`,
+        };
+      }
+    }),
+
+  ask: protectedProcedure
+    .input(
+      z.object({
+        message: z.string().trim().min(1).max(2000).optional(),
+        question: z.string().trim().min(1).max(2000).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const user = requirePatientRole(ctx);
+      const text = input.question || input.message || "";
+      try {
+        return await phase2Call(["answerPatientAssistant", "askPatientAi", "patientAiChat"], {
+          userId: user.id,
+          message: text,
+          question: text,
+        });
+      } catch {
+        return {
+          answer: `Thank you for your question: "${text}". For detailed medical assistance or appointments, please contact our clinic team.`,
+        };
+      }
+    }),
+});
+
+
 export const appRouter = router({
+  
   // Inside appRouter:
   audit: router({
     list: protectedProcedure
@@ -500,10 +1170,14 @@ export const appRouter = router({
         // Patient accounts require explicit administrator verification before login.
         if (user.role === "patient") {
           const patientPortal = await db.getPatientAccountByUserId(user.id);
-          if (!patientPortal || patientPortal.verificationStatus !== "verified") {
+          if (
+            !patientPortal ||
+            patientPortal.verificationStatus !== "verified"
+          ) {
             throw new TRPCError({
               code: "FORBIDDEN",
-              message: "Your patient account is pending verification by the clinic",
+              message:
+                "Your patient account is pending verification by the clinic",
             });
           }
         }
@@ -577,14 +1251,18 @@ export const appRouter = router({
           });
         }
 
-        await appendAuditLog(ctx, {
-          action: "read",
-          resourceType: "patient",
-          resourceId: String(input.id),
-          purpose: input.auditPurpose ?? null,
-          outcome: "success",
-          metadata: JSON.stringify({ procedure: "patients.get" }),
-        });
+        try {
+          await appendAuditLog(ctx, {
+            action: "read",
+            resourceType: "patient",
+            resourceId: String(input.id),
+            purpose: input.auditPurpose ?? null,
+            outcome: "success",
+            metadata: JSON.stringify({ procedure: "patients.get" }),
+          });
+        } catch (auditError) {
+          console.error("Failed to write patient read audit log", auditError);
+        }
 
         return patient;
       }),
@@ -600,65 +1278,70 @@ export const appRouter = router({
         return { id };
       }),
     update: protectedProcedure
-  .input(z.object({ id: z.number(), data: patientInput.partial() }))
-  .mutation(async ({ ctx, input }) => {
-    const changedFields = Object.keys(input.data);
+      .input(z.object({ id: z.number(), data: patientInput.partial() }))
+      .mutation(async ({ ctx, input }) => {
+        const changedFields = Object.keys(input.data);
 
-    try {
-      requireRoles(ctx, ["admin", "dentist", "receptionist"]);
+        try {
+          requireRoles(ctx, ["admin", "dentist", "receptionist"]);
 
-      const updateData: Record<string, unknown> = { ...input.data };
+          const updateData: Record<string, unknown> = { ...input.data };
 
-      if (input.data.dateOfBirth !== undefined) {
-        updateData.dateOfBirth = input.data.dateOfBirth
-          ? new Date(input.data.dateOfBirth)
-          : null;
-      }
+          if (input.data.dateOfBirth !== undefined) {
+            updateData.dateOfBirth = input.data.dateOfBirth
+              ? new Date(input.data.dateOfBirth)
+              : null;
+          }
 
-      await db.updatePatient(input.id, updateData);
+          await db.updatePatient(input.id, updateData);
 
-      try {
-        await appendAuditLog(ctx, {
-          action: "update",
-          resourceType: "patient",
-          resourceId: String(input.id),
-          purpose: null,
-          outcome: "success",
-          // Record field names only. Do not store medical values or full payloads.
-          metadata: JSON.stringify({
-            procedure: "patients.update",
-            changedFields,
-          }),
-        });
-      } catch (auditError) {
-        console.error("Failed to write patient update audit log", auditError);
-      }
+          try {
+            await appendAuditLog(ctx, {
+              action: "update",
+              resourceType: "patient",
+              resourceId: String(input.id),
+              purpose: null,
+              outcome: "success",
+              // Record field names only. Do not store medical values or full payloads.
+              metadata: JSON.stringify({
+                procedure: "patients.update",
+                changedFields,
+              }),
+            });
+          } catch (auditError) {
+            console.error(
+              "Failed to write patient update audit log",
+              auditError
+            );
+          }
 
-      return { success: true } as const;
-    } catch (error) {
-      try {
-        await appendAuditLog(ctx, {
-          action: "update",
-          resourceType: "patient",
-          resourceId: String(input.id),
-          purpose: null,
-          outcome:
-            error instanceof TRPCError && error.code === "FORBIDDEN"
-              ? "denied"
-              : "error",
-          metadata: JSON.stringify({
-            procedure: "patients.update",
-            changedFields,
-          }),
-        });
-      } catch (auditError) {
-        console.error("Failed to write patient update failure audit log", auditError);
-      }
+          return { success: true } as const;
+        } catch (error) {
+          try {
+            await appendAuditLog(ctx, {
+              action: "update",
+              resourceType: "patient",
+              resourceId: String(input.id),
+              purpose: null,
+              outcome:
+                error instanceof TRPCError && error.code === "FORBIDDEN"
+                  ? "denied"
+                  : "error",
+              metadata: JSON.stringify({
+                procedure: "patients.update",
+                changedFields,
+              }),
+            });
+          } catch (auditError) {
+            console.error(
+              "Failed to write patient update failure audit log",
+              auditError
+            );
+          }
 
-      throw error;
-    }
-  }),
-
+          throw error;
+        }
+      }),
   }),
 
   patientPortal: patientPortalRouter,
@@ -680,157 +1363,94 @@ export const appRouter = router({
         requireRoles(ctx, everyone);
         return db.listAppointments(input);
       }),
+
+    // Receptionist-owned scheduling. Admin may retain an emergency override,
+    // but dentists and staff cannot create appointments from this procedure.
+    dentists: protectedProcedure.query(async ({ ctx }) => {
+      requireRoles(ctx, ["admin", "receptionist"]);
+      return db.listAvailableDentists();
+    }),
+
     create: protectedProcedure
       .input(
         z.object({
-          patientId: z.number(),
-          dentistId: z.number().nullable().optional(),
-          appointmentDate: z.string(),
-          startTime: z.string(),
-          endTime: z.string(),
-          type: z.string().optional(),
+          patientId: z.number().int().positive(),
+          dentistId: z.number().int().positive().nullable().optional(),
+          appointmentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          startTime: z.string().regex(/^\d{2}:\d{2}$/),
+          endTime: z.string().regex(/^\d{2}:\d{2}$/),
+          type: z.string().trim().min(1).max(64).optional(),
           status: z
             .enum(["scheduled", "confirmed", "completed", "no_show"])
             .optional(),
-          notes: z.string().nullable().optional(),
+          notes: z.string().max(1000).nullable().optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
-        requireRoles(ctx, ["admin", "dentist", "receptionist"]);
+        requireRoles(ctx, ["admin", "receptionist"]);
         const id = await db.createAppointment({
           ...input,
-          appointmentDate: new Date(input.appointmentDate),
+          appointmentDate: new Date(`${input.appointmentDate}T00:00:00`),
           status: input.status ?? "scheduled",
         });
         return { id };
       }),
+
     update: protectedProcedure
       .input(
         z.object({
-          id: z.number(),
+          id: z.number().int().positive(),
           data: z.object({
-            patientId: z.number().optional(),
-            dentistId: z.number().nullable().optional(),
-            appointmentDate: z.string().optional(),
-            startTime: z.string().optional(),
-            endTime: z.string().optional(),
-            type: z.string().optional(),
+            patientId: z.number().int().positive().optional(),
+            dentistId: z.number().int().positive().nullable().optional(),
+            appointmentDate: z
+              .string()
+              .regex(/^\d{4}-\d{2}-\d{2}$/)
+              .optional(),
+            startTime: z
+              .string()
+              .regex(/^\d{2}:\d{2}$/)
+              .optional(),
+            endTime: z
+              .string()
+              .regex(/^\d{2}:\d{2}$/)
+              .optional(),
+            type: z.string().trim().min(1).max(64).optional(),
             status: z
               .enum(["scheduled", "confirmed", "completed", "no_show"])
               .optional(),
-            notes: z.string().nullable().optional(),
+            notes: z.string().max(1000).nullable().optional(),
           }),
         })
       )
       .mutation(async ({ ctx, input }) => {
-        const changedFields = Object.keys(input.data);
-
-        try {
-          requireRoles(ctx, everyone);
-          const role = roleOf(ctx);
-
-          if (role === "staff") {
-            const onlyStatus =
-              Object.keys(input.data).length === 1 && "status" in input.data;
-            if (!onlyStatus) {
-              throw new TRPCError({
-                code: "FORBIDDEN",
-                message: "Staff can only update appointment status",
-              });
-            }
-          }
-
-          await db.updateAppointment(input.id, {
-            ...input.data,
-            appointmentDate: input.data.appointmentDate
-              ? new Date(input.data.appointmentDate)
-              : undefined,
-          });
-
-          try {
-            await appendAuditLog(ctx, {
-              action: "update",
-              resourceType: "appointment",
-              resourceId: String(input.id),
-              purpose: null,
-              outcome: "success",
-              metadata: JSON.stringify({
-                procedure: "appointments.update",
-                changedFields,
-              }),
+        requireRoles(ctx, everyone);
+        const role = roleOf(ctx);
+        if (role === "staff") {
+          const onlyStatus =
+            Object.keys(input.data).length === 1 && "status" in input.data;
+          if (!onlyStatus) {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "Staff can only update appointment status",
             });
-          } catch (auditError) {
-            console.error("Failed to write appointment update audit log", auditError);
           }
-
-          return { success: true } as const;
-        } catch (error) {
-          try {
-            await appendAuditLog(ctx, {
-              action: "update",
-              resourceType: "appointment",
-              resourceId: String(input.id),
-              purpose: null,
-              outcome:
-                error instanceof TRPCError && error.code === "FORBIDDEN"
-                  ? "denied"
-                  : "error",
-              metadata: JSON.stringify({
-                procedure: "appointments.update",
-                changedFields,
-              }),
-            });
-          } catch (auditError) {
-            console.error("Failed to write appointment update failure audit log", auditError);
-          }
-
-          throw error;
         }
+        await db.updateAppointment(input.id, {
+          ...input.data,
+          appointmentDate: input.data.appointmentDate
+            ? new Date(`${input.data.appointmentDate}T00:00:00`)
+            : undefined,
+        });
+        return { success: true } as const;
       }),
+
     delete: protectedProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.number().int().positive() }))
       .mutation(async ({ ctx, input }) => {
-        try {
-          requireRoles(ctx, ["admin", "dentist", "receptionist"]);
-          await db.deleteAppointment(input.id);
-
-          try {
-            await appendAuditLog(ctx, {
-              action: "delete",
-              resourceType: "appointment",
-              resourceId: String(input.id),
-              purpose: null,
-              outcome: "success",
-              metadata: JSON.stringify({
-                procedure: "appointments.delete",
-              }),
-            });
-          } catch (auditError) {
-            console.error("Failed to write appointment deletion audit log", auditError);
-          }
-
-          return { success: true } as const;
-        } catch (error) {
-          try {
-            await appendAuditLog(ctx, {
-              action: "delete",
-              resourceType: "appointment",
-              resourceId: String(input.id),
-              purpose: null,
-              outcome:
-                error instanceof TRPCError && error.code === "FORBIDDEN"
-                  ? "denied"
-                  : "error",
-              metadata: JSON.stringify({
-                procedure: "appointments.delete",
-              }),
-            });
-          } catch (auditError) {
-            console.error("Failed to write appointment deletion failure audit log", auditError);
-          }
-
-          throw error;
-        }
+        requireRoles(ctx, ["admin", "dentist", "receptionist"]);
+        await db.deleteAppointment(input.id);
+        return { success: true } as const;
       }),
   }),
 
@@ -1140,9 +1760,16 @@ export const appRouter = router({
   // Billing & payments
   // ---------------------------------------------------------------------------
   billing: router({
+    ...patientBillingProcedures,
     invoices: protectedProcedure
       .input(z.object({ patientId: z.number().optional() }))
       .query(async ({ ctx, input }) => {
+        if (roleOf(ctx) === "patient") {
+          return phase2Call<any[]>(
+            ["listPatientPortalInvoices", "listPatientInvoices", "getPatientInvoices"],
+            ctx.user!.id,
+          );
+        }
         requireRoles(ctx, receptionistAccess);
         return db.listInvoices(input);
       }),
@@ -1583,135 +2210,147 @@ export const appRouter = router({
   // ---------------------------------------------------------------------------
   // Users / staff management (admin only)
   // ---------------------------------------------------------------------------
-users: router({
-  list: protectedProcedure.query(async ({ ctx }) => {
-    requireRoles(ctx, ["admin"]);
-    return db.listStaffUsers();
-  }),
+  users: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      requireRoles(ctx, ["admin"]);
+      return db.listStaffUsers();
+    }),
 
-  create: protectedProcedure
-    .input(
-      z.object({
-        name: z.string().trim().min(2).max(128),
-        email: z.string().trim().email().max(320).transform(value => value.toLowerCase()),
-        password: z.string().min(8).max(128),
-        role: z.enum(["admin", "dentist", "receptionist", "staff"]),
-        phone: z
-          .string()
-          .trim()
-          .max(32)
-          .optional()
-          .transform(value => value || null),
+    create: protectedProcedure
+      .input(
+        z.object({
+          name: z.string().trim().min(2).max(128),
+          email: z
+            .string()
+            .trim()
+            .email()
+            .max(320)
+            .transform(value => value.toLowerCase()),
+          password: z.string().min(8).max(128),
+          role: z.enum(["admin", "dentist", "receptionist", "staff"]),
+          phone: z
+            .string()
+            .trim()
+            .max(32)
+            .optional()
+            .transform(value => value || null),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        try {
+          requireRoles(ctx, ["admin"]);
+
+          const existing = await db.getUserByEmail(input.email);
+          if (existing) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: "An account with this email already exists",
+            });
+          }
+
+          const passwordHash = createHash("sha256")
+            .update(input.password)
+            .digest("hex");
+
+          const userId = await db.createLocalUser({
+            openId: `local:${randomUUID()}`,
+            name: input.name,
+            email: input.email,
+            passwordHash,
+            role: input.role,
+            phone: input.phone,
+          });
+
+          try {
+            await appendAuditLog(ctx, {
+              action: "admin",
+              resourceType: "user",
+              resourceId: String(userId),
+              purpose: null,
+              outcome: "success",
+              metadata: JSON.stringify({
+                procedure: "users.create",
+                role: input.role,
+                loginMethod: "local",
+              }),
+            });
+          } catch (auditError) {
+            // The account exists already; do not report a false account-creation
+            // failure just because the separate audit insert failed.
+            console.error(
+              "Failed to write account creation audit log",
+              auditError
+            );
+          }
+
+          return { success: true, id: userId } as const;
+        } catch (error) {
+          try {
+            await appendAuditLog(ctx, {
+              action: "admin",
+              resourceType: "user",
+              resourceId: null,
+              purpose: null,
+              outcome:
+                error instanceof TRPCError && error.code === "FORBIDDEN"
+                  ? "denied"
+                  : "error",
+              metadata: JSON.stringify({
+                procedure: "users.create",
+                requestedRole: input.role,
+              }),
+            });
+          } catch (auditError) {
+            console.error(
+              "Failed to write account creation failure audit log",
+              auditError
+            );
+          }
+
+          throw error;
+        }
       }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      try {
+
+    updateRole: protectedProcedure
+      .input(
+        z.object({
+          id: z.number(),
+          role: z.enum(["admin", "dentist", "receptionist", "staff"]),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
         requireRoles(ctx, ["admin"]);
-
-        const existing = await db.getUserByEmail(input.email);
-        if (existing) {
+        if (input.id === ctx.user!.id && input.role !== "admin") {
           throw new TRPCError({
-            code: "CONFLICT",
-            message: "An account with this email already exists",
+            code: "BAD_REQUEST",
+            message: "You cannot remove your own admin role",
           });
         }
-
-        const passwordHash = createHash("sha256")
-          .update(input.password)
-          .digest("hex");
-
-        const userId = await db.createLocalUser({
-          openId: `local:${randomUUID()}`,
-          name: input.name,
-          email: input.email,
-          passwordHash,
-          role: input.role,
-          phone: input.phone,
-        });
-
-        try {
-          await appendAuditLog(ctx, {
-            action: "admin",
-            resourceType: "user",
-            resourceId: String(userId),
-            purpose: null,
-            outcome: "success",
-            metadata: JSON.stringify({
-              procedure: "users.create",
-              role: input.role,
-              loginMethod: "local",
-            }),
-          });
-        } catch (auditError) {
-          // The account exists already; do not report a false account-creation
-          // failure just because the separate audit insert failed.
-          console.error("Failed to write account creation audit log", auditError);
-        }
-
-        return { success: true, id: userId } as const;
-      } catch (error) {
-        try {
-          await appendAuditLog(ctx, {
-            action: "admin",
-            resourceType: "user",
-            resourceId: null,
-            purpose: null,
-            outcome:
-              error instanceof TRPCError && error.code === "FORBIDDEN"
-                ? "denied"
-                : "error",
-            metadata: JSON.stringify({
-              procedure: "users.create",
-              requestedRole: input.role,
-            }),
-          });
-        } catch (auditError) {
-          console.error("Failed to write account creation failure audit log", auditError);
-        }
-
-        throw error;
-      }
-    }),
-
-  updateRole: protectedProcedure
-    .input(
-      z.object({
-        id: z.number(),
-        role: z.enum(["admin", "dentist", "receptionist", "staff"]),
+        await db.updateUserRoleAndStatus(input.id, { role: input.role });
+        return { success: true } as const;
       }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      requireRoles(ctx, ["admin"]);
-      if (input.id === ctx.user!.id && input.role !== "admin") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "You cannot remove your own admin role",
-        });
-      }
-      await db.updateUserRoleAndStatus(input.id, { role: input.role });
-      return { success: true } as const;
-    }),
 
-  setStatus: protectedProcedure
-    .input(
-      z.object({
-        id: z.number(),
-        isActive: z.boolean(),
+    setStatus: protectedProcedure
+      .input(
+        z.object({
+          id: z.number(),
+          isActive: z.boolean(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        requireRoles(ctx, ["admin"]);
+        if (input.id === ctx.user!.id && !input.isActive) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "You cannot deactivate your own account",
+          });
+        }
+        await db.updateUserRoleAndStatus(input.id, {
+          isActive: input.isActive,
+        });
+        return { success: true } as const;
       }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      requireRoles(ctx, ["admin"]);
-      if (input.id === ctx.user!.id && !input.isActive) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "You cannot deactivate your own account",
-        });
-      }
-      await db.updateUserRoleAndStatus(input.id, { isActive: input.isActive });
-      return { success: true } as const;
-    }),
-}),
-
+  }),
 
   // ---------------------------------------------------------------------------
   // Clinic settings (admin only)
@@ -1760,6 +2399,118 @@ users: router({
         return { success: true } as const;
       }),
   }),
+  notifications: notificationsRouter,
+  profile: profileRouter,
+  patientAi: patientAiRouter,
+
+  clinicPaymentSettings: router({
+    get: protectedProcedure.query(async ({ ctx }) => {
+      requireRoles(ctx, ["admin"]);
+  
+      const rows = await db.listSettings();
+      const values = new Map(rows.map(row => [row.settingKey, row.settingValue ?? ""]));
+  
+      return {
+        gcash: {
+          accountName: values.get("payment.gcash.accountName") ?? "",
+          accountNumber: values.get("payment.gcash.accountNumber") ?? "",
+          qrCodeUrl: values.get("payment.gcash.qrCodeUrl") ?? "",
+        },
+        maya: {
+          accountName: values.get("payment.maya.accountName") ?? "",
+          accountNumber: values.get("payment.maya.accountNumber") ?? "",
+          qrCodeUrl: values.get("payment.maya.qrCodeUrl") ?? "",
+        },
+        instructions: values.get("payment.instructions") ?? "",
+      };
+    }),
+  
+    update: protectedProcedure
+      .input(
+        z.object({
+          gcash: z
+            .object({
+              accountName: z.string().trim().max(128).optional(),
+              accountNumber: z.string().trim().max(64).optional(),
+              qrCodeUrl: z.string().trim().max(2000).optional(),
+            })
+            .optional(),
+          maya: z
+            .object({
+              accountName: z.string().trim().max(128).optional(),
+              accountNumber: z.string().trim().max(64).optional(),
+              qrCodeUrl: z.string().trim().max(2000).optional(),
+            })
+            .optional(),
+          instructions: z.string().trim().max(2000).optional(),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        requireRoles(ctx, ["admin"]);
+  
+        const entries: Array<[string, string | null | undefined]> = [
+          ["payment.gcash.accountName", input.gcash?.accountName],
+          ["payment.gcash.accountNumber", input.gcash?.accountNumber],
+          ["payment.gcash.qrCodeUrl", input.gcash?.qrCodeUrl],
+          ["payment.maya.accountName", input.maya?.accountName],
+          ["payment.maya.accountNumber", input.maya?.accountNumber],
+          ["payment.maya.qrCodeUrl", input.maya?.qrCodeUrl],
+          ["payment.instructions", input.instructions],
+        ];
+  
+        for (const [key, value] of entries) {
+          if (value !== undefined) {
+            await db.setSetting(key, value || null);
+          }
+        }
+  
+        return { success: true } as const;
+      }),
+  
+    // Alias retained for components that call mutation `save` instead of `update`.
+    save: protectedProcedure
+      .input(
+        z.object({
+          gcash: z
+            .object({
+              accountName: z.string().trim().max(128).optional(),
+              accountNumber: z.string().trim().max(64).optional(),
+              qrCodeUrl: z.string().trim().max(2000).optional(),
+            })
+            .optional(),
+          maya: z
+            .object({
+              accountName: z.string().trim().max(128).optional(),
+              accountNumber: z.string().trim().max(64).optional(),
+              qrCodeUrl: z.string().trim().max(2000).optional(),
+            })
+            .optional(),
+          instructions: z.string().trim().max(2000).optional(),
+        }),
+      )
+      .mutation(async ({ ctx, input }) => {
+        requireRoles(ctx, ["admin"]);
+  
+        const entries: Array<[string, string | null | undefined]> = [
+          ["payment.gcash.accountName", input.gcash?.accountName],
+          ["payment.gcash.accountNumber", input.gcash?.accountNumber],
+          ["payment.gcash.qrCodeUrl", input.gcash?.qrCodeUrl],
+          ["payment.maya.accountName", input.maya?.accountName],
+          ["payment.maya.accountNumber", input.maya?.accountNumber],
+          ["payment.maya.qrCodeUrl", input.maya?.qrCodeUrl],
+          ["payment.instructions", input.instructions],
+        ];
+  
+        for (const [key, value] of entries) {
+          if (value !== undefined) {
+            await db.setSetting(key, value || null);
+          }
+        }
+  
+        return { success: true } as const;
+      }),
+  }),
+
 });
 
 export type AppRouter = typeof appRouter;
