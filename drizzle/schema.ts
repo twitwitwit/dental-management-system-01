@@ -27,6 +27,7 @@ export const users = mysqlTable("users", {
     .notNull(),
   isActive: boolean("isActive").default(true).notNull(),
   phone: varchar("phone", { length: 32 }),
+  profilePhotoUrl: varchar("profilePhotoUrl", { length: 1024 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -439,7 +440,7 @@ export const auditLogMigrationSql = `
 CREATE TABLE auditLogs (
   id INT AUTO_INCREMENT PRIMARY KEY,
   actorUserId INT NULL,
-  actorRole ENUM('admin','dentist','receptionist','staff') NULL,
+  actorRole ENUM('admin','dentist','receptionist','staff','patient') NULL,
   action VARCHAR(32) NOT NULL,
   resourceType VARCHAR(64) NOT NULL,
   resourceId VARCHAR(64) NULL,

@@ -1838,3 +1838,54 @@ export async function revokePatientPortalInvitation(invitationId: number) {
       ),
     );
 }
+
+
+// -----------------------------------------------------------------------------
+// Clinic user profile helpers
+// -----------------------------------------------------------------------------
+
+export async function getUserProfile(userId: number) {
+  const database = await getDb();
+  if (!database) throw new Error("Database not available");
+
+  const rows = await database
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      role: users.role,
+      phone: users.phone,
+      profilePhotoUrl: users.profilePhotoUrl,
+    })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
+export async function updateUserProfile(
+  userId: number,
+  data: { name?: string; phone?: string | null },
+) {
+  const database = await getDb();
+  if (!database) throw new Error("Database not available");
+
+  await database.update(users).set({
+    ...(data.name !== undefined ? { name: data.name } : {}),
+    ...(data.phone !== undefined ? { phone: data.phone } : {}),
+  }).where(eq(users.id, userId));
+
+  return getUserProfile(userId);
+}
+
+export async function updateUserProfilePhoto(userId: number, profilePhotoUrl: string) {
+  const database = await getDb();
+  if (!database) throw new Error("Database not available");
+
+  await database.update(users)
+    .set({ profilePhotoUrl })
+    .where(eq(users.id, userId));
+
+  return getUserProfile(userId);
+}

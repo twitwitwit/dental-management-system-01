@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
-import { ArrowLeft, Camera, Loader2, Save } from "lucide-react";
+import { Camera, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import DashboardLayout from "@/components/DashboardLayout";
 import { PageHeader, SectionCard } from "@/components/dental";
@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
-import { useLocation } from "wouter";
 
 type ProfileRecord = {
   id: number;
@@ -30,7 +29,6 @@ function initials(name: string | null | undefined, email: string | null | undefi
 }
 
 export default function ClinicProfilePage() {
-  const [, setLocation] = useLocation();
   const profile = trpc.profile.me.useQuery();
   const utils = trpc.useUtils();
   const updateProfile = trpc.profile.updateProfile.useMutation({
@@ -42,7 +40,7 @@ export default function ClinicProfilePage() {
   });
   const uploadPhoto = trpc.profile.uploadPhoto.useMutation({
     onSuccess: async () => {
-      await Promise.all([profile.refetch(), utils.profile.me.invalidate()]);
+      await profile.refetch();
       toast.success("Profile photo updated");
     },
     onError: error => toast.error(error.message),
@@ -104,12 +102,6 @@ export default function ClinicProfilePage() {
       <PageHeader
         title="Edit profile"
         description="Update the personal details and profile photo used by your clinic account."
-        actions={
-          <Button type="button" variant="outline" onClick={() => setLocation("/")}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to dashboard
-          </Button>
-        }
       />
 
       <div className="mx-auto grid max-w-3xl gap-6">

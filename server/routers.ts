@@ -996,81 +996,65 @@ const notificationsRouter = router({
   }),
 });
 
+const clinicProfileRoles: Role[] = ["admin", "dentist", "receptionist", "staff"];
+
 const profileRouter = router({
   me: protectedProcedure.query(async ({ ctx }) => {
-    if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
-    const user = await db.getUserById(ctx.user.id);
-    return {
-      id: ctx.user.id,
-      name: user?.name ?? "",
-      email: user?.email ?? "",
-      phone: user?.phone ?? "",
-      profilePhotoUrl: null as string | null,
-    };
+    requireRoles(ctx, clinicProfileRoles);
+    return db.getUserProfile(ctx.user!.id);
   }),
 
   get: protectedProcedure.query(async ({ ctx }) => {
-    if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
-    const user = await db.getUserById(ctx.user.id);
-    return {
-      id: ctx.user.id,
-      name: user?.name ?? "",
-      email: user?.email ?? "",
-      phone: user?.phone ?? "",
-      profilePhotoUrl: null as string | null,
-    };
+    requireRoles(ctx, clinicProfileRoles);
+    return db.getUserProfile(ctx.user!.id);
   }),
 
   update: protectedProcedure
-    .input(
-      z.object({
-        name: z.string().trim().min(1).max(160).nullable().optional(),
-        phone: z.string().trim().max(32).nullable().optional(),
-        bio: z.string().trim().max(1000).nullable().optional(),
-      }),
-    )
+    .input(z.object({
+      name: z.string().trim().min(1).max(160),
+      phone: z.string().trim().max(32).nullable().optional(),
+    }))
     .mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
-      if (input.name !== undefined || input.phone !== undefined) {
-        await db.updateUserRoleAndStatus(ctx.user.id, {
-          ...(input.name !== undefined ? { name: input.name ?? null } : {}),
-          ...(input.phone !== undefined ? { phone: input.phone ?? null } : {}),
-        });
-      }
-      return { success: true } as const;
+      requireRoles(ctx, clinicProfileRoles);
+      return db.updateUserProfile(ctx.user!.id, {
+        name: input.name,
+        phone: input.phone ?? null,
+      });
     }),
 
   updateProfile: protectedProcedure
-    .input(
-      z.object({
-        name: z.string().trim().min(1).max(160).nullable().optional(),
-        phone: z.string().trim().max(32).nullable().optional(),
-        bio: z.string().trim().max(1000).nullable().optional(),
-      }),
-    )
+    .input(z.object({
+      name: z.string().trim().min(1).max(160),
+      phone: z.string().trim().max(32).nullable().optional(),
+    }))
     .mutation(async ({ ctx, input }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
-      if (input.name !== undefined || input.phone !== undefined) {
-        await db.updateUserRoleAndStatus(ctx.user.id, {
-          ...(input.name !== undefined ? { name: input.name ?? null } : {}),
-          ...(input.phone !== undefined ? { phone: input.phone ?? null } : {}),
-        });
-      }
-      return { success: true } as const;
+      requireRoles(ctx, clinicProfileRoles);
+      return db.updateUserProfile(ctx.user!.id, {
+        name: input.name,
+        phone: input.phone ?? null,
+      });
     }),
 
   uploadPhoto: protectedProcedure
-    .input(
-      z.object({
-        fileName: z.string().trim().min(1).max(160),
-        contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
-        dataBase64: z.string().min(1).max(5_500_000),
-        fileSize: z.number().int().positive().max(4_000_000).optional(),
-      }),
-    )
-    .mutation(async ({ ctx }) => {
-      if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
-      return { success: true } as const;
+    .input(z.object({
+      fileName: z.string().trim().min(1).max(160),
+      contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+      dataBase64: z.string().min(1).max(5_500_000),
+      fileSize: z.number().int().positive().max(4 * 1024 * 1024),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      requireRoles(ctx, clinicProfileRoles);
+      const data = Buffer.from(input.dataBase64, "base64");
+      if (!data.length || data.length > 4 * 1024 * 1024) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Profile photo is empty or too large" });
+      }
+      const extension = input.contentType.split("/")[1];
+      const uploaded = await storagePut(
+        `profiles/${ctx.user!.id}/avatar.${extension}`,
+        data,
+        input.contentType,
+      );
+      return db.updateUserProfilePhoto(ctx.user!.id, uploaded.url);
     }),
 });
 
@@ -1195,7 +1179,7 @@ export const appRouter = router({
       }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
-      ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+      ctx.res.clearCookie(COOKIE_NAME, cookieOptions);
       return { success: true } as const;
     }),
   }),
@@ -1375,7 +1359,7 @@ export const appRouter = router({
       .input(
         z.object({
           patientId: z.number().int().positive(),
-          dentistId: z.number().int().positive().nullable().optional(),
+          dentistId: z.number().int().positive(),
           appointmentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
           startTime: z.string().regex(/^\d{2}:\d{2}$/),
           endTime: z.string().regex(/^\d{2}:\d{2}$/),

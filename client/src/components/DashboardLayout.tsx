@@ -1,6 +1,6 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,10 +26,10 @@ import { Label } from "./ui/label";
 import { useState } from "react";
 import { useIsMobile } from "@/hooks/useMobile";
 import { navForRole, Role } from "@/lib/roles";
-import { LogOut, PanelLeft, Stethoscope, X } from "lucide-react";
+import { LogOut, PanelLeft, Stethoscope, UserCircle, X } from "lucide-react";
 import { CSSProperties, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
-import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
+import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 import { Button } from "./ui/button";
 
 // Dental-themed sidebar header + role-scoped navigation.
@@ -53,7 +53,9 @@ export default function DashboardLayout({
       : DEFAULT_WIDTH;
   });
   const { loading, user } = useAuth();
-  const login = trpc.auth.login.useMutation({ onSuccess: () => window.location.reload() });
+  const login = trpc.auth.login.useMutation({
+    onSuccess: () => window.location.reload(),
+  });
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const role = (user as unknown as { role?: Role } | null)?.role ?? null;
@@ -63,7 +65,7 @@ export default function DashboardLayout({
   }, [sidebarWidth]);
 
   if (loading) {
-    return <DashboardLayoutSkeleton />
+    return <DashboardLayoutSkeleton />;
   }
 
   if (!user) {
@@ -78,15 +80,43 @@ export default function DashboardLayout({
               Sign in with your local staff account.
             </p>
           </div>
-          <form onSubmit={event => { event.preventDefault(); login.mutate({ email, password }); }} className="w-full space-y-4">
-            <div className="space-y-2"><Label htmlFor="email">Email</Label><Input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} required /></div>
-            <div className="space-y-2"><Label htmlFor="password">Password</Label><Input id="password" type="password" value={password} onChange={e => setPassword(e.target.value)} required /></div>
-            {login.error && <p className="text-sm text-destructive">{login.error.message}</p>}
-            <Button type="submit" disabled={login.isPending}
-            size="lg"
-            className="w-full shadow-lg hover:shadow-xl transition-all"
+          <form
+            onSubmit={event => {
+              event.preventDefault();
+              login.mutate({ email, password });
+            }}
+            className="w-full space-y-4"
           >
-            {login.isPending ? "Signing in…" : "Sign in"}
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                required
+              />
+            </div>
+            {login.error && (
+              <p className="text-sm text-destructive">{login.error.message}</p>
+            )}
+            <Button
+              type="submit"
+              disabled={login.isPending}
+              size="lg"
+              className="w-full shadow-lg hover:shadow-xl transition-all"
+            >
+              {login.isPending ? "Signing in…" : "Sign in"}
             </Button>
           </form>
         </div>
@@ -124,10 +154,22 @@ function DashboardLayoutContent({
   setSidebarWidth,
 }: DashboardLayoutContentProps) {
   const { user, logout } = useAuth();
+  const profileQuery = trpc.profile.me.useQuery();
+  const profilePhotoUrl =
+    (
+      profileQuery.data as
+        | { profilePhotoUrl?: string | null }
+        | null
+        | undefined
+    )?.profilePhotoUrl ??
+    (user as unknown as { profilePhotoUrl?: string | null } | null)
+      ?.profilePhotoUrl ??
+    null;
   const role = (user as unknown as { role?: Role } | null)?.role ?? null;
   const menuItems = navForRole(role);
   const [location, setLocation] = useLocation();
-  const { state, toggleSidebar, openMobile, setOpenMobile, isMobile } = useSidebar();
+  const { state, toggleSidebar, openMobile, setOpenMobile, isMobile } =
+    useSidebar();
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -275,8 +317,12 @@ function DashboardLayoutContent({
               <DropdownMenuTrigger asChild>
                 <button className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <Avatar className="h-9 w-9 border shrink-0">
+                    <AvatarImage
+                      src={profilePhotoUrl ?? undefined}
+                      alt={`${user?.name ?? "User"} profile photo`}
+                    />
                     <AvatarFallback className="text-xs font-medium">
-                      {user?.name?.charAt(0).toUpperCase()}
+                      {user?.name?.charAt(0).toUpperCase() ?? "U"}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
@@ -295,6 +341,17 @@ function DashboardLayoutContent({
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem
+                  onClick={() => {
+                    if (isMobile) setOpenMobile(false);
+                    setLocation("/profile");
+                  }}
+                  className="cursor-pointer"
+                >
+                  <UserCircle className="mr-2 h-4 w-4" />
+                  <span>Edit profile</span>
+                </DropdownMenuItem>
+
                 <DropdownMenuItem
                   onClick={() => {
                     if (isMobile) setOpenMobile(false);
@@ -345,8 +402,12 @@ function DashboardLayoutContent({
                 </span>
               ) : null}
               <Avatar className="h-8 w-8 border shrink-0">
+                <AvatarImage
+                  src={profilePhotoUrl ?? undefined}
+                  alt={`${user?.name ?? "User"} profile photo`}
+                />
                 <AvatarFallback className="text-xs font-medium">
-                  {user?.name?.charAt(0).toUpperCase()}
+                  {user?.name?.charAt(0).toUpperCase() ?? "U"}
                 </AvatarFallback>
               </Avatar>
             </div>
